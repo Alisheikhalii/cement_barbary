@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./node_modules/**)",
+      "Read(./**/node_modules/**)",
+      "Read(./pnpm-lock.yaml)",
+      "Read(./package-lock.json)",
+      "Read(./yarn.lock)",
+      "Read(./**/dist/**)",
+      "Read(./**/build/**)",
+      "Read(./**/.next/**)",
+      "Read(./**/.turbo/**)",
+      "Read(./**/coverage/**)",
+      "Read(./**/playwright-report/**)",
+      "Read(./**/test-results/**)",
+      "Read(./**/*.svg)",
+      "Read(./**/*.map)",
+      "Read(./**/*.min.js)",
+      "Read(./**/*.tsbuildinfo)",
+      "Read(./**/*.woff)",
+      "Read(./**/*.woff2)",
+      "Read(./**/*.ttf)",
+      "Read(./**/*.png)",
+      "Read(./**/*.jpg)",
+      "Read(./**/*.jpeg)",
+      "Read(./**/*.webp)",
+      "Read(./**/*.ico)",
+      "Read(./**/*.log)",
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Read(./**/.env.local)",
+      "Read(./**/.env.*.local)",
+      "Read(./**/.env.development)",
+      "Read(./**/.env.production)",
+      "Read(./**/.env.staging)",
+      "Read(./**/.env.test)",
+      "Read(./infra/backups/**)"
+    ]
+  }
+}
