@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+
+<html dir="rtl" lang="fa"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"surface-bright":"#f8f9ff","primary-fixed":"#dde1ff","surface-container-lowest":"#ffffff","surface-card":"#FFFFFF","surface-tint":"#3755c3","surface-dim":"#cbdbf5","status-danger-surface":"#FEF2F2","status-success":"#059669","on-tertiary-fixed-variant":"#264191","tertiary-container":"#2c4696","on-primary-fixed":"#001453","status-warning":"#D97706","on-background":"#0b1c30","surface-variant":"#d3e4fe","outline":"#757684","on-tertiary-container":"#a7b9ff","on-error-container":"#93000a","status-info-bevel":"#0E7490","secondary-container":"#2170e4","surface-container":"#e5eeff","on-tertiary-fixed":"#00164e","on-surface":"#0b1c30","on-secondary":"#ffffff","on-primary-fixed-variant":"#173bab","secondary-fixed-dim":"#adc6ff","primary-container":"#1e40af","status-warning-surface":"#FFFBEB","on-secondary-container":"#fefcff","text-primary":"#0F172A","inverse-surface":"#213145","background-base":"#F1F5F9","surface-container-high":"#dce9ff","on-secondary-fixed-variant":"#004395","on-tertiary":"#ffffff","error":"#ba1a1a","surface-glass":"rgba(255, 255, 255, 0.78)","tertiary":"#0d2e7e","status-success-surface":"#ECFDF5","tertiary-fixed-dim":"#b6c4ff","status-danger-bevel":"#B91C1C","error-container":"#ffdad6","status-danger":"#DC2626","border-subtle":"#E2E8F0","on-surface-variant":"#444653","primary":"#00288e","text-muted":"#94A3B8","status-info-surface":"#ECFEFF","on-error":"#ffffff","outline-variant":"#c4c5d5","secondary-fixed":"#d8e2ff","accent-purple-surface":"#F5F3FF","text-secondary":"#475569","accent-purple":"#7C3AED","primary-fixed-dim":"#b8c4ff","on-secondary-fixed":"#001a42","surface":"#f8f9ff","status-info":"#0891B2","status-success-light":"#10B981","status-warning-bevel":"#B45309","surface-container-low":"#eff4ff","surface-container-highest":"#d3e4fe","on-primary":"#ffffff","on-primary-container":"#a8b8ff","background":"#f8f9ff","inverse-on-surface":"#eaf1ff","status-success-bevel":"#047857","tertiary-fixed":"#dce1ff","secondary":"#0058be","inverse-primary":"#b8c4ff"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"space-md":"1rem","space-xl":"2rem","space-2xs":"0.25rem","space-sm":"0.75rem","space-lg":"1.5rem","space-2xl":"2.5rem","space-xs":"0.5rem","gutter-mobile":"0.75rem","gutter":"1.25rem","margin-mobile":"1rem","margin":"1.5rem","space-3xl":"3.5rem"},"fontFamily":{"label-md":["Vazirmatn"],"body-lg":["Vazirmatn"],"label-sm":["Vazirmatn"],"headline-lg-mobile":["Vazirmatn"],"body-md":["Vazirmatn"],"headline-sm":["Vazirmatn"],"headline-lg":["Vazirmatn"],"headline-md":["Vazirmatn"],"label-lg":["Vazirmatn"],"display-hero":["Vazirmatn"],"caption":["Vazirmatn"],"body-sm":["Vazirmatn"]},"fontSize":{"label-md":["12px",{"lineHeight":"18px","fontWeight":"600"}],"body-lg":["15px",{"lineHeight":"24px","fontWeight":"500"}],"label-sm":["11px",{"lineHeight":"16px","fontWeight":"500"}],"headline-lg-mobile":["20px",{"lineHeight":"28px","fontWeight":"700"}],"body-md":["14px",{"lineHeight":"22px","fontWeight":"400"}],"headline-sm":["16px",{"lineHeight":"24px","fontWeight":"600"}],"headline-lg":["24px",{"lineHeight":"34px","letterSpacing":"-0.01em","fontWeight":"700"}],"headline-md":["18px",{"lineHeight":"26px","fontWeight":"700"}],"label-lg":["14px",{"lineHeight":"20px","fontWeight":"600"}],"display-hero":["30px",{"lineHeight":"42px","letterSpacing":"-0.02em","fontWeight":"800"}],"caption":["12px",{"lineHeight":"18px","fontWeight":"400"}],"body-sm":["13px",{"lineHeight":"20px","fontWeight":"400"}]}}}};</script></head><body class="bg-surface font-body-md text-on-surface select-none"><input class="peer hidden" id="sidebar-drawer-toggle" type="checkbox"/><label class="fixed inset-0 bg-inverse-surface/40 backdrop-blur-sm z-40 hidden peer-checked:block lg:peer-checked:hidden transition-opacity" for="sidebar-drawer-toggle"></label><header class="fixed top-0 left-0 right-0 z-30 h-16 bg-gradient-to-l from-primary-container to-tertiary-container shadow-[0_4px_16px_rgba(15,23,42,0.12)] text-on-primary"><div class="w-full h-full px-margin-mobile lg:px-margin flex items-center justify-between gap-space-sm"><div class="flex items-center gap-space-sm"><label class="lg:hidden cursor-pointer p-space-xs rounded-lg hover:bg-white/10 active:translate-y-0.5 transition-all flex items-center justify-center" for="sidebar-drawer-toggle"><span class="material-symbols-outlined text-[24px]">menu</span></label><div class="flex items-center gap-space-xs"><div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner"><span class="material-symbols-outlined text-secondary-fixed text-[22px]">local_shipping</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm leading-none tracking-tight">سیمان خاکستری نی‌ریز</span><span class="font-caption text-caption text-secondary-fixed-dim leading-none mt-1 hidden sm:inline-block">سامانه هوشمند اعلام بار و نوبت‌دهی سریع‌بار</span></div></div></div><div class="hidden xl:flex items-center gap-space-xs bg-white/10 p-1 rounded-xl backdrop-blur-md"><button class="px-space-sm py-1 rounded-lg font-label-md text-label-md bg-white text-primary font-bold shadow-sm">سالن بار کارخانه</button><button class="px-space-sm py-1 rounded-lg font-label-md text-label-md text-white/80 hover:text-white hover:bg-white/10 transition-colors">رانندگان</button><button class="px-space-sm py-1 rounded-lg font-label-md text-label-md text-white/80 hover:text-white hover:bg-white/10 transition-colors">شرکت‌های حمل</button></div><div class="flex items-center gap-space-sm"><div class="hidden md:flex items-center bg-white/10 rounded-xl px-space-sm py-1.5 focus-within:bg-white/20 transition-all"><span class="material-symbols-outlined text-white/60 text-[18px] ml-2">search</span><input class="bg-transparent text-white placeholder-white/50 text-body-sm font-body-sm focus:outline-none w-48 lg:w-56" placeholder="جستجوی حواله، راننده، مقصد..." type="text"/></div><button class="relative p-space-xs rounded-xl bg-white/10 hover:bg-white/20 active:translate-y-0.5 transition-all text-white"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-status-danger ring-2 ring-primary-container"></span></button><div class="flex items-center gap-space-xs pr-space-xs border-r border-white/15"><div class="hidden sm:flex flex-col text-left"><span class="font-label-md text-label-md leading-none text-white">اپراتور ترابری</span><span class="font-caption text-caption text-secondary-fixed leading-none mt-1">شیفت روز - خط ۲</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></div></header><aside class="fixed top-0 bottom-0 right-0 z-50 lg:z-20 w-72 bg-surface-card shadow-[0_10px_25px_rgba(15,23,42,0.06)] border-l border-border-subtle flex flex-col pt-16 transition-transform duration-300 ease-in-out translate-x-full lg:translate-x-0 peer-checked:translate-x-0"><div class="p-space-md border-b border-border-subtle flex items-center justify-between lg:hidden"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-primary text-[24px]">local_shipping</span><span class="font-headline-sm text-headline-sm text-primary">منوی اصلی سریع‌بار</span></div><label class="cursor-pointer p-space-2xs text-text-secondary hover:text-text-primary" for="sidebar-drawer-toggle"><span class="material-symbols-outlined text-[20px]">close</span></label></div><div class="p-space-md hidden lg:block"><div class="p-space-sm rounded-xl bg-surface-container-low flex items-center justify-between"><div class="flex items-center gap-space-xs"><div class="w-2.5 h-2.5 rounded-full bg-status-success animate-pulse"></div><span class="font-label-md text-label-md text-text-primary">سالن نوبت‌دهی: فعال</span></div><span class="font-caption text-caption text-text-secondary">۲۸۴ کامیون در صف</span></div></div><nav class="flex-1 overflow-y-auto px-space-md py-space-sm space-y-1.5" data-active-classes="bg-primary-container text-on-primary font-bold shadow-md shadow-primary-container/20"><div class="px-space-sm py-space-2xs font-caption text-caption text-text-muted uppercase tracking-wider">عملیات بار و سالن</div><a class="flex items-center px-space-sm py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all gap-space-sm" data-path="dashboard" href="#"><span class="material-symbols-outlined text-[20px]">dashboard</span><span class="font-label-lg text-label-lg">داشبورد جامع ترابری</span></a><a aria-current="page" class="flex items-center px-space-sm py-2.5 rounded-xl transition-all gap-space-sm bg-primary-container text-on-primary font-bold shadow-md shadow-primary-container/20" data-path="loads-announcements" href="#"><span class="material-symbols-outlined text-[20px]">campaign</span><span class="font-label-lg text-label-lg">اعلام بار کارخانه</span></a><a class="flex items-center px-space-sm py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all gap-space-sm" data-path="create-load" href="#"><span class="material-symbols-outlined text-[20px]">post_add</span><span class="font-label-lg text-label-lg">ثبت حواله و بار جدید</span></a><a class="flex items-center px-space-sm py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all gap-space-sm" data-path="driver-queue" href="#"><span class="material-symbols-outlined text-[20px]">format_list_numbered_rtl</span><span class="font-label-lg text-label-lg">نوبت‌دهی و صف رانندگان</span></a><div class="pt-space-sm px-space-sm py-space-2xs font-caption text-caption text-text-muted uppercase tracking-wider">اطلاعات پایه و مالی</div><a class="flex items-center px-space-sm py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all gap-space-sm" data-path="destinations-management" href="#"><span class="material-symbols-outlined text-[20px]">pin_drop</span><span class="font-label-lg text-label-lg">مدیریت مقاصد و نرخ کرایه</span></a><a class="flex items-center px-space-sm py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all gap-space-sm" data-path="wallet-reports" href="#"><span class="material-symbols-outlined text-[20px]">account_balance_wallet</span><span class="font-label-lg text-label-lg">کیف پول و گزارشات مالی</span></a></nav><div class="p-space-md border-t border-border-subtle bg-surface-container-lowest"><div class="flex items-center justify-between text-body-sm text-text-secondary"><div class="flex items-center gap-space-2xs"><span class="material-symbols-outlined text-[18px] text-status-success">verified</span><span class="font-caption text-caption">پروتکل سریع‌بار V2.4</span></div><span class="font-caption text-caption text-text-muted">نی‌ریز</span></div></div></aside><div class="lg:pr-72 pb-20 lg:pb-0"><main class="w-full min-h-[calc(100vh-4rem)] pt-16 bg-surface px-margin-mobile lg:px-margin py-space-lg"><div class="flex flex-col w-full gap-space-lg select-none">
+<!-- Top Operational Banner & Visual Atmosphere -->
+<div class="relative w-full rounded-2xl bg-gradient-to-l from-primary-container via-secondary to-primary p-space-md text-on-primary shadow-xl overflow-hidden">
+<div class="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
+<div class="absolute left-8 bottom-0 w-80 h-32 rounded-full bg-secondary-fixed/15 blur-2xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md">
+<div class="flex flex-col gap-space-2xs">
+<div class="flex items-center gap-space-xs">
+<span class="px-space-xs py-0.5 rounded-full bg-white/15 text-white font-label-sm text-label-sm tracking-wide">سالن رسمی ترابری نی‌ریز</span>
+<span class="w-2 h-2 rounded-full bg-status-success-light animate-ping"></span>
+<span class="font-caption text-caption text-secondary-fixed-dim">اتصال پایانه بار مرکزی برخط</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg font-bold tracking-tight text-white drop-shadow-sm">میز کار و سالن اعلام بار شرکت‌های حمل و نقل</h1>
+<p class="font-body-sm text-body-sm text-white/80 max-w-2xl leading-relaxed">
+          مدیریت یکپارچه صدور مجوزهای بارگیری، توزیع مکانیزه سهمیه ناوگان بونکر و کفی، و رصد لحظه‌ای نرخ کرایه مصوب کارخانه
+        </p>
+</div>
+<div class="flex items-center gap-space-sm self-stretch md:self-auto justify-end">
+<button class="h-11 px-space-md rounded-xl bg-white/15 hover:bg-white/25 active:translate-y-0.5 text-white font-label-md text-label-md flex items-center gap-space-xs backdrop-blur-md shadow-sm transition-all" id="quick-refresh-btn">
+<span class="material-symbols-outlined text-[20px]">sync</span>
+<span>بروزرسانی داده‌ها</span>
+</button>
+<button class="h-11 px-space-lg rounded-xl bg-white text-primary font-label-lg text-label-lg flex items-center gap-space-xs shadow-[0_4px_0_#d1d5db,0_10px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#d1d5db] transition-all" onclick="toggleModal('new-load-modal', true)">
+<span class="material-symbols-outlined text-[22px] text-primary">add_circle</span>
+<span class="font-bold">ثبت حواله جدید</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Realtime KPI Cards (Glassmorphic 3D Elevation) -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
+<!-- Card 1 -->
+<div class="relative bg-surface-card rounded-2xl p-space-md shadow-[0_4px_16px_rgba(15,23,42,0.05)] hover:shadow-[0_10px_25px_rgba(15,23,42,0.08)] transition-all flex flex-col justify-between overflow-hidden group">
+<div class="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-l from-primary to-secondary"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-text-secondary">مجموع بارهای فعال</span>
+<div class="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-primary group-hover:scale-105 transition-transform shadow-inner">
+<span class="material-symbols-outlined text-[22px]">inventory_2</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<div class="flex items-baseline gap-1">
+<span class="font-display-hero text-display-hero font-extrabold text-text-primary tracking-tight">۴۸</span>
+<span class="font-label-md text-label-md text-text-muted">حواله باز</span>
+</div>
+<span class="font-caption text-caption px-space-xs py-0.5 rounded-full bg-status-success-surface text-status-success font-semibold flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span> ۶+ نسبت به دیروز
+        </span>
+</div>
+<div class="mt-space-sm pt-space-xs bg-surface-container-low rounded-lg p-space-xs flex items-center justify-between font-caption text-caption text-text-secondary">
+<span>فله: ۲۲ حواله</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span>پاکتی: ۲۶ حواله</span>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="relative bg-surface-card rounded-2xl p-space-md shadow-[0_4px_16px_rgba(15,23,42,0.05)] hover:shadow-[0_10px_25px_rgba(15,23,42,0.08)] transition-all flex flex-col justify-between overflow-hidden group">
+<div class="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-l from-status-success to-status-success-light"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-text-secondary">مجوزهای صادر شده</span>
+<div class="w-10 h-10 rounded-xl bg-status-success-surface flex items-center justify-center text-status-success group-hover:scale-105 transition-transform shadow-inner">
+<span class="material-symbols-outlined text-[22px]">assignment_turned_in</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<div class="flex items-baseline gap-1">
+<span class="font-display-hero text-display-hero font-extrabold text-text-primary tracking-tight">۱۲۴</span>
+<span class="font-label-md text-label-md text-text-muted">بارنامه رسمی</span>
+</div>
+<span class="font-caption text-caption px-space-xs py-0.5 rounded-full bg-status-success-surface text-status-success font-semibold">
+          ۹۴٪ تطبیق باسکول
+        </span>
+</div>
+<div class="mt-space-sm pt-space-xs bg-surface-container-low rounded-lg p-space-xs flex items-center justify-between font-caption text-caption text-text-secondary">
+<span>بارگیرهای عبوری: ۸۹</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span>بومی نی‌ریز: ۳۵</span>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="relative bg-surface-card rounded-2xl p-space-md shadow-[0_4px_16px_rgba(15,23,42,0.05)] hover:shadow-[0_10px_25px_rgba(15,23,42,0.08)] transition-all flex flex-col justify-between overflow-hidden group">
+<div class="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-l from-status-warning to-status-warning-bevel"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-text-secondary">ناوگان مورد نیاز مانده</span>
+<div class="w-10 h-10 rounded-xl bg-status-warning-surface flex items-center justify-center text-status-warning group-hover:scale-105 transition-transform shadow-inner">
+<span class="material-symbols-outlined text-[22px]">local_shipping</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<div class="flex items-baseline gap-1">
+<span class="font-display-hero text-display-hero font-extrabold text-status-warning tracking-tight">۱۸</span>
+<span class="font-label-md text-label-md text-text-muted">کامیون کسری</span>
+</div>
+<span class="font-caption text-caption px-space-xs py-0.5 rounded-full bg-status-warning-surface text-status-warning font-semibold">
+          اولویت فوری خط ۳
+        </span>
+</div>
+<div class="mt-space-sm pt-space-xs bg-surface-container-low rounded-lg p-space-xs flex items-center justify-between font-caption text-caption text-text-secondary">
+<span>بونکر: ۱۱ دستگاه</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span>کفی: ۷ دستگاه</span>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="relative bg-surface-card rounded-2xl p-space-md shadow-[0_4px_16px_rgba(15,23,42,0.05)] hover:shadow-[0_10px_25px_rgba(15,23,42,0.08)] transition-all flex flex-col justify-between overflow-hidden group">
+<div class="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-l from-accent-purple to-secondary"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-text-secondary">ظرفیت جذب امروز</span>
+<div class="w-10 h-10 rounded-xl bg-accent-purple-surface flex items-center justify-center text-accent-purple group-hover:scale-105 transition-transform shadow-inner">
+<span class="material-symbols-outlined text-[22px]">speed</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<div class="flex items-baseline gap-1">
+<span class="font-display-hero text-display-hero font-extrabold text-text-primary tracking-tight">۸۵٪</span>
+<span class="font-label-md text-label-md text-text-muted">راندمان بارگیری</span>
+</div>
+<div class="w-16 h-2 rounded-full bg-surface-container overflow-hidden">
+<div class="h-full bg-accent-purple rounded-full" style="width: 85%"></div>
+</div>
+</div>
+<div class="mt-space-sm pt-space-xs bg-surface-container-low rounded-lg p-space-xs flex items-center justify-between font-caption text-caption text-text-secondary">
+<span>کل سهمیه روز: ۲,۴۵۰ تن</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span>تحقق یافته: ۲,۰۸۰</span>
+</div>
+</div>
+</div>
+<!-- Operational Filter Hub & 3D Tactile Buttons Toolbar -->
+<div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-space-md bg-surface-card p-space-md rounded-2xl shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+<!-- 3D Segmented Radio Tabs -->
+<div class="flex items-center gap-space-xs p-1.5 bg-surface-container rounded-xl overflow-x-auto max-w-full">
+<button class="tab-btn px-space-md py-2 rounded-lg font-label-md text-label-md font-bold text-on-primary bg-primary-container shadow-[0_3px_0_#173bab] active:translate-y-0.5 transition-all whitespace-nowrap" onclick="switchTab(this, 'all')">
+        همه بارهای فعال (۴۸)
+      </button>
+<button class="tab-btn px-space-md py-2 rounded-lg font-label-md text-label-md text-text-secondary hover:text-text-primary hover:bg-white/60 active:translate-y-0.5 transition-all whitespace-nowrap" onclick="switchTab(this, 'archived')">
+        اعلام بارهای آرشیو شده (۱۴۲)
+      </button>
+<button class="tab-btn px-space-md py-2 rounded-lg font-label-md text-label-md text-text-secondary hover:text-text-primary hover:bg-white/60 active:translate-y-0.5 transition-all whitespace-nowrap" onclick="switchTab(this, 'history')">
+        سوابق و بایگانی ترابری
+      </button>
+</div>
+<!-- Tactile 3D Circular Buttons & Search -->
+<div class="flex items-center gap-space-sm flex-wrap justify-between lg:justify-end">
+<!-- Fast Filter Input -->
+<div class="relative flex-1 sm:w-64 sm:flex-initial">
+<span class="material-symbols-outlined absolute right-3 top-2.5 text-text-muted text-[18px]">search</span>
+<input class="w-full h-10 pr-9 pl-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all" id="table-search" placeholder="فیلتر سریع مقصد، محموله..." type="text"/>
+</div>
+<!-- 3D Tactile Circular Button Cluster -->
+<div class="flex items-center gap-2">
+<!-- Add Button -->
+<button class="w-10 h-10 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-[0_4px_0_#173bab,0_6px_12px_rgba(30,64,175,0.25)] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#173bab] transition-all" onclick="toggleModal('new-load-modal', true)" title="افزودن بار جدید">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+<!-- Edit Button -->
+<button class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shadow-[0_4px_0_#004395] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#004395] transition-all" onclick="showToast('لطفاً یک ردیف حواله را برای ویرایش انتخاب فرمایید')" title="ویرایش حواله">
+<span class="material-symbols-outlined text-[19px]">edit</span>
+</button>
+<!-- View / Inspect Button -->
+<button class="w-10 h-10 rounded-full bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center shadow-[0_4px_0_#adc6ff] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#adc6ff] transition-all" onclick="inspectFirstRow()" title="مشاهده جزئیات محموله">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+<!-- Duplicate Button -->
+<button class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shadow-[0_4px_0_#cbdbf5] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#cbdbf5] transition-all" onclick="showToast('بار انتخابی تکثیر شد و در پیش‌نویس قرار گرفت')" title="کپی و بازتولید بار">
+<span class="material-symbols-outlined text-[19px]">content_copy</span>
+</button>
+<!-- Print Button -->
+<button class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shadow-[0_4px_0_#cbdbf5] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#cbdbf5] transition-all" onclick="window.print()" title="چاپ لیست بارهای سالن">
+<span class="material-symbols-outlined text-[19px]">print</span>
+</button>
+<!-- Destructive Button -->
+<button class="w-10 h-10 rounded-full bg-status-danger text-on-error flex items-center justify-center shadow-[0_4px_0_#b91c1c,0_6px_12px_rgba(220,38,38,0.25)] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#b91c1c] transition-all" onclick="showToast('امکان لغو بارهای دارای راننده ثبت‌شده وجود ندارد', 'danger')" title="ابطال اعلام بار">
+<span class="material-symbols-outlined text-[19px]">delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Main Freight Table Container (Desktop Matrix & Mobile Cards Adaptor) -->
+<div class="bg-surface-card rounded-2xl shadow-[0_4px_20px_rgba(15,23,42,0.06)] overflow-hidden">
+<!-- Desktop Table View -->
+<div class="hidden md:block overflow-x-auto">
+<table class="w-full text-right border-collapse min-w-[980px]">
+<thead>
+<tr class="bg-surface-container-low text-text-secondary font-label-md text-label-md">
+<th class="p-space-sm w-12 text-center">
+<input class="w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer" type="checkbox"/>
+</th>
+<th class="p-space-sm">
+<div class="flex items-center gap-1 cursor-pointer hover:text-primary">
+<span>شماره بار</span>
+<span class="material-symbols-outlined text-[16px] text-text-muted">filter_alt</span>
+</div>
+</th>
+<th class="p-space-sm">سالن</th>
+<th class="p-space-sm">نام محموله</th>
+<th class="p-space-sm">مبدأ / مقصد</th>
+<th class="p-space-sm">
+<div class="flex items-center gap-1 cursor-pointer hover:text-primary">
+<span>نوع ناوگان و بارگیر</span>
+<span class="material-symbols-outlined text-[16px] text-text-muted">filter_alt</span>
+</div>
+</th>
+<th class="p-space-sm text-center">تناژ کل</th>
+<th class="p-space-sm text-center">کرایه خالص (تن)</th>
+<th class="p-space-sm text-center">مجوزها / مانده</th>
+<th class="p-space-sm text-center">وضعیت سالن</th>
+<th class="p-space-sm text-center w-20">عملیات</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-border-subtle font-body-sm text-body-sm text-text-primary" id="loads-table-body">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer" onclick="selectRow(this)">
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<input class="w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer" type="checkbox"/>
+</td>
+<td class="p-space-sm font-label-lg text-label-lg font-bold text-primary">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-status-success"></span>
+<span>۱۲۴۸۰</span>
+</div>
+</td>
+<td class="p-space-sm">
+<span class="px-2 py-0.5 rounded-md bg-surface-container font-label-sm text-label-sm text-text-secondary">سالن ۱ - فله</span>
+</td>
+<td class="p-space-sm">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold">سیمان تیپ ۲ فله</span>
+<span class="font-caption text-caption text-text-muted">کلینکر باکیفیت نی‌ریز</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="text-text-muted">نی‌ریز</span>
+<span class="material-symbols-outlined text-[16px] text-primary">arrow_left_alt</span>
+<span class="font-bold text-secondary">شیراز (پروژه مترو)</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[18px]">rv_hookup</span>
+<span>بونکر سه محور (۲۸ تن)</span>
+</div>
+</td>
+<td class="p-space-sm text-center font-bold">۵۶۰ تن</td>
+<td class="p-space-sm text-center text-primary font-bold">۱,۲۸۰,۰۰۰ ریال</td>
+<td class="p-space-sm text-center">
+<div class="flex flex-col items-center">
+<div class="flex items-center gap-1 font-label-md text-label-md">
+<span class="text-status-success font-bold">۱۵ مجوز</span>
+<span class="text-text-muted">/</span>
+<span class="text-status-danger font-bold">۵ مانده</span>
+</div>
+<div class="w-20 h-1.5 rounded-full bg-surface-container overflow-hidden mt-1">
+<div class="h-full bg-status-success rounded-full" style="width: 75%"></div>
+</div>
+</div>
+</td>
+<td class="p-space-sm text-center">
+<span class="px-space-xs py-1 rounded-full bg-status-success-surface text-status-success font-label-sm text-label-sm font-bold">
+                در حال فراخوان
+              </span>
+</td>
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<div class="flex items-center justify-center gap-1">
+<button class="p-1 rounded-lg text-text-muted hover:text-primary hover:bg-surface-container transition-all" onclick="openDetailQuickView('۱۲۴۸۰', 'سیمان تیپ ۲ فله', 'شیراز', 'بونکر سه محور')">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer" onclick="selectRow(this)">
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<input class="w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer" type="checkbox"/>
+</td>
+<td class="p-space-sm font-label-lg text-label-lg font-bold text-primary">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-status-warning"></span>
+<span>۱۲۴۸۱</span>
+</div>
+</td>
+<td class="p-space-sm">
+<span class="px-2 py-0.5 rounded-md bg-surface-container font-label-sm text-label-sm text-text-secondary">سالن ۲ - کیسه</span>
+</td>
+<td class="p-space-sm">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold">سیمان پاکتی ۵۰ کیلویی</span>
+<span class="font-caption text-caption text-text-muted">پالت شیرینگ شده</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="text-text-muted">نی‌ریز</span>
+<span class="material-symbols-outlined text-[16px] text-primary">arrow_left_alt</span>
+<span class="font-bold text-secondary">سیرجان (انبار مرکزی)</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[18px]">local_shipping</span>
+<span>تریلی کفی / بغلدار</span>
+</div>
+</td>
+<td class="p-space-sm text-center font-bold">۳۴۰ تن</td>
+<td class="p-space-sm text-center text-primary font-bold">۱,۴۵۰,۰۰۰ ریال</td>
+<td class="p-space-sm text-center">
+<div class="flex flex-col items-center">
+<div class="flex items-center gap-1 font-label-md text-label-md">
+<span class="text-status-success font-bold">۸ مجوز</span>
+<span class="text-text-muted">/</span>
+<span class="text-status-warning font-bold">۶ مانده</span>
+</div>
+<div class="w-20 h-1.5 rounded-full bg-surface-container overflow-hidden mt-1">
+<div class="h-full bg-status-warning rounded-full" style="width: 57%"></div>
+</div>
+</div>
+</td>
+<td class="p-space-sm text-center">
+<span class="px-space-xs py-1 rounded-full bg-status-warning-surface text-status-warning font-label-sm text-label-sm font-bold">
+                تکمیل تدریجی
+              </span>
+</td>
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<div class="flex items-center justify-center gap-1">
+<button class="p-1 rounded-lg text-text-muted hover:text-primary hover:bg-surface-container transition-all" onclick="openDetailQuickView('۱۲۴۸۱', 'سیمان پاکتی ۵۰ کیلویی', 'سیرجان', 'تریلی کفی')">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer" onclick="selectRow(this)">
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<input class="w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer" type="checkbox"/>
+</td>
+<td class="p-space-sm font-label-lg text-label-lg font-bold text-primary">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-status-danger"></span>
+<span>۱۲۴۸۲</span>
+</div>
+</td>
+<td class="p-space-sm">
+<span class="px-2 py-0.5 rounded-md bg-surface-container font-label-sm text-label-sm text-text-secondary">سالن ۱ - فله</span>
+</td>
+<td class="p-space-sm">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold">سیمان پرتلند پوزولانی فله</span>
+<span class="font-caption text-caption text-text-muted">مخصوص بتن‌های بادوام</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="text-text-muted">نی‌ریز</span>
+<span class="material-symbols-outlined text-[16px] text-primary">arrow_left_alt</span>
+<span class="font-bold text-secondary">مرودشت (سد درودزن)</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[18px]">rv_hookup</span>
+<span>بونکر مجاز تناژ ۲۵ تن</span>
+</div>
+</td>
+<td class="p-space-sm text-center font-bold">۲۰۰ تن</td>
+<td class="p-space-sm text-center text-primary font-bold">۱,۱۹۰,۰۰۰ ریال</td>
+<td class="p-space-sm text-center">
+<div class="flex flex-col items-center">
+<div class="flex items-center gap-1 font-label-md text-label-md">
+<span class="text-status-success font-bold">۱ مجوز</span>
+<span class="text-text-muted">/</span>
+<span class="text-status-danger font-bold">۷ مانده</span>
+</div>
+<div class="w-20 h-1.5 rounded-full bg-surface-container overflow-hidden mt-1">
+<div class="h-full bg-status-danger rounded-full" style="width: 14%"></div>
+</div>
+</div>
+</td>
+<td class="p-space-sm text-center">
+<span class="px-space-xs py-1 rounded-full bg-status-danger-surface text-status-danger font-label-sm text-label-sm font-bold">
+                کسری ناوگان شدید
+              </span>
+</td>
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<div class="flex items-center justify-center gap-1">
+<button class="p-1 rounded-lg text-text-muted hover:text-primary hover:bg-surface-container transition-all" onclick="openDetailQuickView('۱۲۴۸۲', 'سیمان پرتلند پوزولانی فله', 'مرودشت', 'بونکر مجاز')">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer" onclick="selectRow(this)">
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<input class="w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer" type="checkbox"/>
+</td>
+<td class="p-space-sm font-label-lg text-label-lg font-bold text-primary">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-status-success"></span>
+<span>۱۲۴۸۳</span>
+</div>
+</td>
+<td class="p-space-sm">
+<span class="px-2 py-0.5 rounded-md bg-surface-container font-label-sm text-label-sm text-text-secondary">سالن ۲ - کیسه</span>
+</td>
+<td class="p-space-sm">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold">سیمان پاکتی تیپ ۵ ضدسولفات</span>
+<span class="font-caption text-caption text-text-muted">صادراتی بسته‌بندی ویژه</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="text-text-muted">نی‌ریز</span>
+<span class="material-symbols-outlined text-[16px] text-primary">arrow_left_alt</span>
+<span class="font-bold text-secondary">فسا (عامل توزیع)</span>
+</div>
+</td>
+<td class="p-space-sm">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[18px]">commute</span>
+<span>ده‌چرخ جفت / تک</span>
+</div>
+</td>
+<td class="p-space-sm text-center font-bold">۱۵۰ تن</td>
+<td class="p-space-sm text-center text-primary font-bold">۹۲۰,۰۰۰ ریال</td>
+<td class="p-space-sm text-center">
+<div class="flex flex-col items-center">
+<div class="flex items-center gap-1 font-label-md text-label-md">
+<span class="text-status-success font-bold">۱۰ مجوز</span>
+<span class="text-text-muted">/</span>
+<span class="text-status-success font-bold">۰ مانده</span>
+</div>
+<div class="w-20 h-1.5 rounded-full bg-surface-container overflow-hidden mt-1">
+<div class="h-full bg-status-success rounded-full" style="width: 100%"></div>
+</div>
+</div>
+</td>
+<td class="p-space-sm text-center">
+<span class="px-space-xs py-1 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm font-bold">
+                تکمیل شده
+              </span>
+</td>
+<td class="p-space-sm text-center" onclick="event.stopPropagation()">
+<div class="flex items-center justify-center gap-1">
+<button class="p-1 rounded-lg text-text-muted hover:text-primary hover:bg-surface-container transition-all" onclick="openDetailQuickView('۱۲۴۸۳', 'سیمان پاکتی تیپ ۵ ضدسولفات', 'فسا', 'ده‌چرخ جفت')">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Mobile Touch-Optimized 3D Card Stack (< md) -->
+<div class="md:hidden p-space-sm flex flex-col gap-space-sm" id="mobile-cards-container">
+<!-- Mobile Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-r-4 border-status-success flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-headline-sm text-headline-sm font-bold text-primary">حواله ۱۲۴۸۰</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container text-text-secondary font-label-sm text-label-sm">فله</span>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-status-success-surface text-status-success font-label-sm text-label-sm font-bold">فراخوان</span>
+</div>
+<div class="font-label-lg text-label-lg font-bold text-text-primary mt-1">سیمان تیپ ۲ فله کارخانه نی‌ریز</div>
+<div class="flex items-center gap-2 text-text-secondary font-body-sm text-body-sm">
+<span>مقصد:</span>
+<span class="font-bold text-secondary">شیراز (پروژه مترو)</span>
+<span class="text-text-muted">•</span>
+<span>بونکر ۲۸ تن</span>
+</div>
+<div class="grid grid-cols-2 gap-2 mt-2 pt-2 bg-surface-container-low rounded-lg p-space-xs">
+<div>
+<span class="font-caption text-caption text-text-muted">تناژ و مانده:</span>
+<div class="font-label-md text-label-md font-bold text-text-primary">۵۶۰ تن (۵ مانده)</div>
+</div>
+<div>
+<span class="font-caption text-caption text-text-muted">کرایه هر تن:</span>
+<div class="font-label-md text-label-md font-bold text-primary">۱,۲۸۰,۰۰۰ ریال</div>
+</div>
+</div>
+<div class="flex items-center justify-end gap-2 mt-2 pt-1">
+<button class="px-space-md py-1.5 rounded-lg bg-surface-container-high text-primary font-label-md text-label-md flex items-center gap-1" onclick="openDetailQuickView('۱۲۴۸۰', 'سیمان تیپ ۲ فله', 'شیراز', 'بونکر سه محور')">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+<span>مشاهده</span>
+</button>
+<button class="px-space-md py-1.5 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md flex items-center gap-1 shadow-sm" onclick="showToast('مجوز رزرو برای راننده صادر شد')">
+<span class="material-symbols-outlined text-[16px]">how_to_reg</span>
+<span>تخصیص نوبت</span>
+</button>
+</div>
+</div>
+<!-- Mobile Card 2 -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-r-4 border-status-warning flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-headline-sm text-headline-sm font-bold text-primary">حواله ۱۲۴۸۱</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container text-text-secondary font-label-sm text-label-sm">پاکتی</span>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-status-warning-surface text-status-warning font-label-sm text-label-sm font-bold">تکمیل تدریجی</span>
+</div>
+<div class="font-label-lg text-label-lg font-bold text-text-primary mt-1">سیمان پاکتی ۵۰ کیلویی صادراتی</div>
+<div class="flex items-center gap-2 text-text-secondary font-body-sm text-body-sm">
+<span>مقصد:</span>
+<span class="font-bold text-secondary">سیرجان (انبار مرکزی)</span>
+<span class="text-text-muted">•</span>
+<span>تریلی کفی</span>
+</div>
+<div class="grid grid-cols-2 gap-2 mt-2 pt-2 bg-surface-container-low rounded-lg p-space-xs">
+<div>
+<span class="font-caption text-caption text-text-muted">تناژ و مانده:</span>
+<div class="font-label-md text-label-md font-bold text-text-primary">۳۴۰ تن (۶ مانده)</div>
+</div>
+<div>
+<span class="font-caption text-caption text-text-muted">کرایه هر تن:</span>
+<div class="font-label-md text-label-md font-bold text-primary">۱,۴۵۰,۰۰۰ ریال</div>
+</div>
+</div>
+<div class="flex items-center justify-end gap-2 mt-2 pt-1">
+<button class="px-space-md py-1.5 rounded-lg bg-surface-container-high text-primary font-label-md text-label-md flex items-center gap-1" onclick="openDetailQuickView('۱۲۴۸۱', 'سیمان پاکتی ۵۰ کیلویی', 'سیرجان', 'تریلی کفی')">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+<span>مشاهده</span>
+</button>
+<button class="px-space-md py-1.5 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md flex items-center gap-1 shadow-sm" onclick="showToast('مجوز رزرو برای راننده صادر شد')">
+<span class="material-symbols-outlined text-[16px]">how_to_reg</span>
+<span>تخصیص نوبت</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Table Pagination & Matrix Status -->
+<div class="p-space-md bg-surface-container-lowest flex flex-col sm:flex-row items-center justify-between gap-space-sm font-caption text-caption text-text-secondary">
+<div class="flex items-center gap-space-sm">
+<span>نمایش ردیف ۱ تا ۴ از مجموع ۴۸ اعلام بار</span>
+<span class="hidden sm:inline-block w-1.5 h-1.5 rounded-full bg-border-subtle"></span>
+<span class="hidden sm:inline-block">نرخ‌های درج شده مطابق ابلاغیه ترابری استان فارس می‌باشد</span>
+</div>
+<div class="flex items-center gap-1">
+<button class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[18px]">chevron_right</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-primary text-on-primary font-bold">۱</button>
+<button class="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center">۲</button>
+<button class="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center">۳</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[18px]">chevron_left</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Operational Flow Bottom Grid (Driver Turn Hall Snapshot & Live Depots) -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-space-md">
+<!-- Dispatch Load Distribution Status -->
+<div class="lg:col-span-2 bg-surface-card rounded-2xl p-space-md shadow-[0_4px_16px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+<div class="flex items-center justify-between pb-space-sm">
+<div class="flex items-center gap-space-xs">
+<div class="w-8 h-8 rounded-xl bg-primary-container text-on-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">hub</span>
+</div>
+<span class="font-headline-sm text-headline-sm font-bold text-text-primary">وضعیت ناوگان در مسیر و باسکول کارخانه</span>
+</div>
+<span class="font-caption text-caption text-text-muted">بروزرسانی زنده ماهواره‌ای</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-sm my-space-sm">
+<div class="p-space-sm rounded-xl bg-surface-container-low flex flex-col gap-1">
+<span class="font-caption text-caption text-text-muted">ورودی گیت بارگیری</span>
+<span class="font-headline-md text-headline-md font-bold text-primary">۳۲ کامیون</span>
+<span class="font-caption text-caption text-status-success font-semibold">میانگین توقف: ۱۸ دقیقه</span>
+</div>
+<div class="p-space-sm rounded-xl bg-surface-container-low flex flex-col gap-1">
+<span class="font-caption text-caption text-text-muted">زیر سیلوهای بارگیر</span>
+<span class="font-headline-md text-headline-md font-bold text-secondary">۸ بونکر همزمان</span>
+<span class="font-caption text-caption text-text-secondary">سیلو ۱ و ۳ در حال دمش</span>
+</div>
+<div class="p-space-sm rounded-xl bg-surface-container-low flex flex-col gap-1">
+<span class="font-caption text-caption text-text-muted">باسکول خروج و صدور تمبر</span>
+<span class="font-headline-md text-headline-md font-bold text-status-success">۶ دستگاه</span>
+<span class="font-caption text-caption text-text-secondary">اتصال برخط پایانه نی‌ریز</span>
+</div>
+</div>
+<div class="w-full bg-surface-container rounded-xl p-space-sm flex items-center justify-between font-body-sm text-body-sm text-text-secondary">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">notifications_active</span>
+<span>توجه: اولویت بارگیری شیفت عصر با بارهای صادراتی بندرعباس و سیرجان است.</span>
+</div>
+<button class="px-space-sm py-1 rounded-lg bg-surface-container-high text-primary font-label-md text-label-md font-bold hover:bg-surface-container transition-colors" onclick="showToast('دستورالعمل به تابلوهای سالن ارسال شد')">
+          ارسال به تابلو اعلام
+        </button>
+</div>
+</div>
+<!-- Active Transport Companies List -->
+<div class="bg-surface-card rounded-2xl p-space-md shadow-[0_4px_16px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+<div class="flex items-center justify-between pb-space-xs">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-status-success text-[22px]">corporate_fare</span>
+<span class="font-headline-sm text-headline-sm font-bold text-text-primary">شرکت‌های باربری همکار</span>
+</div>
+<span class="font-caption text-caption px-2 py-0.5 rounded-full bg-surface-container text-text-muted">۴ شرکت فعال</span>
+</div>
+<div class="flex flex-col gap-space-xs my-space-xs divide-y divide-border-subtle">
+<div class="py-2 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-text-primary">باربری تندرو ترابر فارس</span>
+<span class="font-caption text-caption text-text-muted">کد مجوز: ۴۴۱۸۰ • سهمیه: ۴۰٪</span>
+</div>
+<span class="font-label-md text-label-md font-bold text-status-success">۱۸ سرویس</span>
+</div>
+<div class="py-2 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-text-primary">تعاونی کامیون‌داران نی‌ریز</span>
+<span class="font-caption text-caption text-text-muted">کد مجوز: ۱۲۰۵۲ • سهمیه: ۳۵٪</span>
+</div>
+<span class="font-label-md text-label-md font-bold text-status-success">۱۴ سرویس</span>
+</div>
+<div class="py-2 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-text-primary">سریع‌بار کویر سیرجان</span>
+<span class="font-caption text-caption text-text-muted">کد مجوز: ۹۸۳۱ • سهمیه: ۲۵٪</span>
+</div>
+<span class="font-label-md text-label-md font-bold text-status-warning">۸ سرویس</span>
+</div>
+</div>
+<button class="w-full py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-label-md font-bold transition-all text-center" onclick="showToast('گزارش توزیع عادلانه شرکت‌ها دانلود شد')">
+        مشاهده قراردادها و سهمیه‌بندی
+      </button>
+</div>
+</div>
+<!-- Modal Dialog: Register New Cement Freight Announcement (اعلام بار جدید) -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-space-sm bg-inverse-surface/50 backdrop-blur-sm hidden transition-all duration-300" id="new-load-modal">
+<div class="relative w-full max-w-3xl max-h-[942px] bg-surface-card rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+<!-- Modal Header -->
+<div class="p-space-md bg-gradient-to-l from-primary-container to-secondary text-on-primary flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<div class="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center text-white shadow-inner">
+<span class="material-symbols-outlined text-[24px]">post_add</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm font-bold">ثبت اعلام بار جدید در سالن کارخانه</span>
+<span class="font-caption text-caption text-secondary-fixed-dim">توزیع سهمیه بار سیمان و حواله ترابری به رانندگان</span>
+</div>
+</div>
+<button class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all" onclick="toggleModal('new-load-modal', false)">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<!-- Modal Body (Stepwise Form) -->
+<form class="p-space-lg overflow-y-auto space-y-space-md flex-1" id="new-load-form" onsubmit="handleCreateLoad(event)">
+<!-- Section 1: حواله و فرستنده -->
+<div>
+<div class="flex items-center gap-space-xs pb-space-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
+<span class="font-label-lg text-label-lg font-bold text-text-primary">مشخصات حواله و مبدا/مقصد</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-sm mt-space-2xs">
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">شماره حواله کارخانه <span class="text-status-danger">*</span></label>
+<input class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" placeholder="مثال: ۱۲۴۸۹" required="" type="text"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">سالن اعلام بار <span class="text-status-danger">*</span></label>
+<select class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" required="">
+<option value="hall-1">سالن ۱ - سیمان فله</option>
+<option value="hall-2">سالن ۲ - سیمان پاکتی</option>
+<option value="hall-export">سالن ۳ - صادراتی ویژه</option>
+</select>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">شهر مقصد <span class="text-status-danger">*</span></label>
+<input class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" placeholder="مثال: شیراز، سیرجان، فسا..." required="" type="text"/>
+</div>
+</div>
+</div>
+<!-- Section 2: مشخصات محموله سیمان -->
+<div class="pt-space-xs">
+<div class="flex items-center gap-space-xs pb-space-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+<span class="font-label-lg text-label-lg font-bold text-text-primary">مشخصات نوع سیمان و ناوگان حمل</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-sm mt-space-2xs">
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">نوع محصول سیمان <span class="text-status-danger">*</span></label>
+<select class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" required="">
+<option>سیمان پرتلند تیپ ۲ فله</option>
+<option>سیمان پرتلند تیپ ۵ ضد سولفات</option>
+<option>سیمان پاکتی ۵۰ کیلویی</option>
+<option>سیمان پرتلند پوزولانی</option>
+</select>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">نوع بارگیر الزامی <span class="text-status-danger">*</span></label>
+<select class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" required="">
+<option>بونکر سه محور (فله)</option>
+<option>تریلی کفی / بغلدار (پاکتی)</option>
+<option>کامیون ده‌چرخ جفت</option>
+<option>تک (۶ چرخ)</option>
+</select>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">تناژ کل سفارش (تن) <span class="text-status-danger">*</span></label>
+<input class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" placeholder="مثال: ۴۵۰" required="" type="number"/>
+</div>
+</div>
+</div>
+<!-- Section 3: کرایه، مالی و شرایط ترابری -->
+<div class="pt-space-xs">
+<div class="flex items-center gap-space-xs pb-space-xs">
+<span class="w-2.5 h-2.5 rounded-full bg-status-success"></span>
+<span class="font-label-lg text-label-lg font-bold text-text-primary">نرخ کرایه و توزیع مجوزها</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-sm mt-space-2xs">
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">کرایه پایه هر تن (ریال) <span class="text-status-danger">*</span></label>
+<input class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" placeholder="مثال: ۱,۳۵۰,۰۰۰" required="" type="text"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">تعداد سهمیه مجاز (کامیون) <span class="text-status-danger">*</span></label>
+<input class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" placeholder="مثال: ۱۶" required="" type="number"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">شرکت باربری متعهد <span class="text-status-danger">*</span></label>
+<select class="w-full h-11 px-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" required="">
+<option>باربری تندرو ترابر فارس</option>
+<option>تعاونی کامیون‌داران نی‌ریز</option>
+<option>سریع‌بار کویر سیرجان</option>
+<option>اعلام باز در سالن عمومی (کلیه رانندگان)</option>
+</select>
+</div>
+</div>
+</div>
+<!-- Section 4: توضیحات بارگیر و تخلیه -->
+<div>
+<label class="block font-label-md text-label-md text-text-secondary mb-1">توضیحات تکمیلی برای راننده و انباردار</label>
+<textarea class="w-full p-3 rounded-xl bg-surface-container-low text-text-primary text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary" placeholder="توضیحات نظیر زمان تخلیه، شرایط توزین باسکول ۲ یا شماره تماس متصدی پروژه..." rows="2"></textarea>
+</div>
+<!-- Modal Footer Actions (3D Block Style) -->
+<div class="pt-space-md border-t border-border-subtle flex items-center justify-end gap-space-sm">
+<button class="px-space-lg h-11 rounded-xl bg-surface-container hover:bg-surface-container-high text-text-secondary font-label-lg text-label-lg transition-colors" onclick="toggleModal('new-load-modal', false)" type="button">
+            انصراف
+          </button>
+<button class="px-space-xl h-11 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg font-bold shadow-[0_4px_0_#001453,0_10px_20px_rgba(0,40,142,0.25)] hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_1px_0_#001453] transition-all flex items-center gap-space-xs" type="submit">
+<span class="material-symbols-outlined text-[20px]">check</span>
+<span>تأیید و انتشار در سالن بار</span>
+</button>
+</div>
+</form>
+</div>
+</div>
+<!-- Toast Notification System Container -->
+<div class="fixed bottom-6 left-6 z-50 flex flex-col gap-2 pointer-events-none" id="toast-container"></div>
+</div>
+<script>
+  // Simple & Robust Interactions for Load Announcement Hall
+  function toggleModal(modalId, show) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    if (show) {
+      modal.classList.remove('hidden');
+    } else {
+      modal.classList.add('hidden');
+    }
+  }
+
+  function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `pointer-events-auto px-4 py-3 rounded-xl text-white font-label-md text-label-md shadow-xl flex items-center gap-2 transition-all transform translate-y-2 opacity-0 duration-200 ${
+      type === 'danger' ? 'bg-status-danger' : 'bg-primary'
+    }`;
+    
+    const icon = type === 'danger' ? 'error' : 'task_alt';
+    toast.innerHTML = `
+      <span class="material-symbols-outlined text-[18px]">${icon}</span>
+      <span>${message}</span>
+    `;
+
+    container.appendChild(toast);
+
+    // Trigger animation
+    requestAnimationFrame(() => {
+      toast.classList.remove('translate-y-2', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+    });
+
+    setTimeout(() => {
+      toast.classList.add('opacity-0', 'translate-y-2');
+      setTimeout(() => toast.remove(), 250);
+    }, 3200);
+  }
+
+  function switchTab(btn, tabKey) {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.className = 'tab-btn px-space-md py-2 rounded-lg font-label-md text-label-md text-text-secondary hover:text-text-primary hover:bg-white/60 active:translate-y-0.5 transition-all whitespace-nowrap';
+    });
+    btn.className = 'tab-btn px-space-md py-2 rounded-lg font-label-md text-label-md font-bold text-on-primary bg-primary-container shadow-[0_3px_0_#173bab] active:translate-y-0.5 transition-all whitespace-nowrap';
+    showToast(`فیلتر نمایش داده‌ها به «${btn.innerText.trim()}» تغییر یافت`);
+  }
+
+  function selectRow(row) {
+    document.querySelectorAll('#loads-table-body tr').forEach(r => r.classList.remove('bg-surface-container'));
+    row.classList.add('bg-surface-container');
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    if (checkbox) checkbox.checked = !checkbox.checked;
+  }
+
+  function inspectFirstRow() {
+    openDetailQuickView('۱۲۴۸۰', 'سیمان تیپ ۲ فله', 'شیراز (پروژه مترو)', 'بونکر سه محور ۲۸ تن');
+  }
+
+  function openDetailQuickView(loadId, title, destination, vehicle) {
+    showToast(`بارنامه #${loadId} | مقصد: ${destination} (${vehicle})`);
+  }
+
+  function handleCreateLoad(e) {
+    e.preventDefault();
+    toggleModal('new-load-modal', false);
+    showToast('اعلام بار با موفقیت در سالن منتشر شد و نوبت‌دهی رانندگان آغاز گردید');
+  }
+
+  // Quick live filter for table rows
+  document.getElementById('table-search')?.addEventListener('input', function (e) {
+    const val = e.target.value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#loads-table-body tr');
+    rows.forEach(r => {
+      const text = r.innerText.toLowerCase();
+      r.style.display = text.includes(val) ? '' : 'none';
+    });
+  });
+
+  // Fast Refresh simulator
+  document.getElementById('quick-refresh-btn')?.addEventListener('click', function () {
+    const icon = this.querySelector('.material-symbols-outlined');
+    if (icon) icon.classList.add('animate-spin');
+    setTimeout(() => {
+      if (icon) icon.classList.remove('animate-spin');
+      showToast('وضعیت باسکول و نوبت‌های جدید کارخانه همگام‌سازی شد');
+    }, 700);
+  });
+</script></main></div><div class="fixed bottom-0 left-0 right-0 z-30 lg:hidden h-16 bg-surface-card/95 backdrop-blur-md shadow-[0_-4px_16px_rgba(15,23,42,0.08)] border-t border-border-subtle"><nav class="h-full grid grid-cols-4 items-center justify-items-center px-space-xs" data-active-classes="text-primary font-bold"><a class="flex flex-col items-center justify-center text-text-secondary hover:text-primary transition-colors py-1" data-path="dashboard" href="#"><span class="material-symbols-outlined text-[22px]">dashboard</span><span class="font-label-sm text-label-sm mt-0.5">داشبورد</span></a><a aria-current="page" class="flex flex-col items-center justify-center transition-colors py-1 text-primary font-bold" data-path="loads-announcements" href="#"><span class="material-symbols-outlined text-[22px]">campaign</span><span class="font-label-sm text-label-sm mt-0.5">اعلام بار</span></a><a class="flex flex-col items-center justify-center text-text-secondary hover:text-primary transition-colors py-1" data-path="driver-queue" href="#"><span class="material-symbols-outlined text-[22px]">hourglass_top</span><span class="font-label-sm text-label-sm mt-0.5">صف نوبت</span></a><a class="flex flex-col items-center justify-center text-text-secondary hover:text-primary transition-colors py-1" data-path="wallet-reports" href="#"><span class="material-symbols-outlined text-[22px]">wallet</span><span class="font-label-sm text-label-sm mt-0.5">کیف پول</span></a></nav></div></body></html>
