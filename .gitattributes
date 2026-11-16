@@ -1,0 +1,11 @@
+# Normalize line endings (Windows dev machine, Linux CI/servers)
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

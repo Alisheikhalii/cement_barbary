@@ -1,8 +1,37 @@
+# Dependencies
 node_modules/
+
+# Secrets (only .env.example is committed)
 .env
 .env.*
 !.env.example
+
+# Build outputs
 dist/
+build/
 .next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Tests and reports
 coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# Backups and logs
+infra/backups/
 *.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
