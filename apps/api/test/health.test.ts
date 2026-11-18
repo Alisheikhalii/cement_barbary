@@ -17,6 +17,8 @@ describe('API skeleton (integration)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
+    // DATABASE_URL is required by env validation; the skeleton does not connect to it yet.
+    process.env.DATABASE_URL ??= 'postgresql://bitabar_app:dummy@localhost:5432/bitabar';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.use(helmet());

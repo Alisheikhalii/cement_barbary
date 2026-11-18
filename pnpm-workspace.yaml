@@ -7,6 +7,13 @@ allowBuilds:
   '@scarf/scarf': false
   # SWC native binary — required by unplugin-swc for API tests (NestJS decorators).
   '@swc/core': true
+  # Optional SSH backend of dockerode (testcontainers) — not used; plain Docker socket is enough.
+  cpu-features: false
+  ssh2: false
+  # Bundler binary ships as an optional platform package; the install script only re-validates it.
+  esbuild: false
+  # codegen postinstall of protobufjs (via testcontainers) — the prebuilt code is already shipped.
+  protobufjs: false
 
 # Temporary audit exception — ADR-004. Dev-only, no patched picomatch published yet.
 # Remove as soon as an official fix is released. Do not add other advisories here.
