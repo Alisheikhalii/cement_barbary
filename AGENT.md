@@ -24,6 +24,7 @@
 - قوانین deny خواندن در `.claude/settings.json`. چون deny بر allow غلبه دارد، به‌جای `.env.*` الگوهای مشخص (`.env`, `.env.local`, `.env.*.local`, `.env.{development,production,staging,test}`) گذاشته شد تا `.env.example` قابل‌خواندن بماند.
 - `.gitattributes` با `eol=lf`: توسعه روی ویندوز، CI و سرور لینوکس.
 - ADR-001 نسخه ابزارها + `.npmrc` رجیستری رسمی npm | ADR-002 deny-list | ADR-003 ریپو PUBLIC + داده مصنوعی | ADR-004 استثنای موقت audit برای picomatch (`docs/adr/`).
+- ADR-005 دیتابیس/ایزولاسیون Tenant: Drizzle + `pg`، دو نقش DB (owner برای Migration، `bitabar_app` محدود برای Runtime)، RLS + `TenantDb` (D1–D13) — `docs/adr/005-database-drizzle-rls.md`.
 - **تصمیمات مالک برای F1 (۱۴۰۵/۰۸/۲۷):** ORM = **Drizzle** (طبق برنامه معماری مالک؛ ADR در F1-02 نوشته می‌شود). نقش `CARRIER_ADMIN` فعلاً **فقط ورود، بدون هیچ مجوز عملیاتی** (موقت، در انتظار OD-37). ترتیب رسمی Taskهای F1 طبق برنامه مالک: F1-01 اسکلت API، F1-02 دیتابیس/Drizzle/Migration/Tenant Context، F1-03 کاربران و نقش‌ها (+Seed)، F1-04 احراز هویت، F1-05 RBAC، F1-06 Audit/Idempotency/Outbox، F1-07 داده پایه، F1-08 باربری‌ها، F1-09 اسکلت Web، F1-10 تست ایزولاسیون/IDOR/RLS (+ورود ۴ نقش)، F1-11 Dockerfile و Build ایمیج در CI. محل UI پنل اپراتور (احتمالاً داخل F1-09) در شروع F1-09 تایید می‌شود.
 - `apps/api` به‌صورت **ESM** اجرا می‌شود (هم‌راستا با بقیه ریپو)؛ تست‌های NestJS با `unplugin-swc` (esbuild متادیتای decorator ندارد). `@nestjs/cli` برای build/dev استفاده می‌شود (GUIDELINES §۳.۵-د).
 
