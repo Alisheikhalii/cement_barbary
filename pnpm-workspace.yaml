@@ -2,6 +2,12 @@ packages:
   - apps/*
   - packages/*
 
+allowBuilds:
+  # Analytics collector (transitive dep of @nestjs/cli) — never runs.
+  '@scarf/scarf': false
+  # SWC native binary — required by unplugin-swc for API tests (NestJS decorators).
+  '@swc/core': true
+
 # Temporary audit exception — ADR-004. Dev-only, no patched picomatch published yet.
 # Remove as soon as an official fix is released. Do not add other advisories here.
 auditConfig:
