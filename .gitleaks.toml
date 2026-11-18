@@ -1,0 +1,46 @@
+# Gitleaks config for a PUBLIC repository (owner decision OWN-17).
+# Extends the default ruleset with Iranian personal-data patterns so that real
+# phone numbers, national IDs or bank accounts never reach Git history.
+# Policy: synthetic data only — see docs/security/data-handling.md.
+
+title = "BitaBar gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ir-mobile-number"
+description = "Iranian mobile number (09xxxxxxxxx / +989xxxxxxxxx)"
+regex = '''(?:^|[^0-9])((?:\+98|0098|0)9[0-9]{9})(?:[^0-9]|$)'''
+secretGroup = 1
+keywords = ["09", "+989", "00989"]
+
+[[rules]]
+id = "ir-sheba-iban"
+description = "Iranian IBAN (SHEBA): IR + 24 digits"
+regex = '''\b(IR[0-9]{24})\b'''
+secretGroup = 1
+keywords = ["IR"]
+
+[[rules]]
+id = "ir-national-id-labeled"
+description = "Iranian national ID (10 digits) next to a national-ID label"
+regex = '''(?i)(?:national[_-]?id|nationalcode|national_code|codemelli|code_melli|کد ?ملی)["'\s:=]{0,5}([0-9]{10})\b'''
+secretGroup = 1
+keywords = ["national", "codemelli", "code_melli", "ملی"]
+
+[allowlist]
+description = "Generated, vendored and fixture paths"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''(^|/)\.turbo/''',
+  '''(^|/)coverage/''',
+  '''pnpm-lock\.yaml$''',
+]
+# Synthetic test values that are allowed in fixtures and docs.
+regexes = [
+  '''09000000000''',
+  '''0912000000[0-9]''',
+  '''IR0{24}''',
+]

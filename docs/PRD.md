@@ -1,7 +1,7 @@
 # PRD – سامانه اعلام بار و نوبت‌دهی (نام کاری: BitaBar)
 
 > نسخه ۱.۰ | وضعیت: آماده برای پیاده‌سازی با Claude Code
-> این سند همراه با `GUIDELINES.md` و `CLAUDE.md` و سه فایل مشخصات اولیه (`System-Specification.md`, `Driver-Panel-Specification.md`, `UI-UX-3D-Design-System.md`) منبع حقیقت پروژه است.
+> این سند همراه با `GUIDELINES.md` و `CLAUDE.md` و سه فایل مشخصات اولیه (`System-Specification.md`, `Driver-Panel-Specification.md`, `docs/specs/UI-UX-3D-Design-System.md`) منبع حقیقت پروژه است.
 
 ---
 
@@ -110,7 +110,7 @@
 - اعلان‌ها (درون‌برنامه + پیامک برای رویدادهای مهم: تخصیص بار، رسیدن نوبت، تایید/رد لغو).
 - جدول استاندارد: فیلتر ستونی، مرتب‌سازی، صفحه‌بندی سمت سرور، انتخاب ستون‌ها، خروجی Excel.
 - Audit Log (چه کسی، چه زمانی، چه چیزی، مقدار قبل/بعد، IP).
-- طراحی بر اساس `UI-UX-3D-Design-System.md`، RTL کامل، سادگی و خلوتی صفحات.
+- طراحی بر اساس `docs/specs/UI-UX-3D-Design-System.md`، RTL کامل، سادگی و خلوتی صفحات.
 
 ### ۵.۲ پنل اپراتور کارخانه (جدید – تکمیل‌شده در این سند)
 | ماژول | شرح | مسیر |

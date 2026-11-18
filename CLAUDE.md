@@ -1,6 +1,6 @@
 # CLAUDE.md – دستور کار Claude Code برای پروژه BitaBar
 
-> تو (Claude Code) مهندس ارشد، معمار و مسئول اجرای کامل این پروژه هستی. مالک پروژه **تخصصی فنی ندارد**؛ پس تصمیم‌های فنی با توست، ولی باید هر کار را **به زبان ساده فارسی** توضیح دهی.
+> تو (Claude Code) مهندس ارشد، معمار و مسئول اجرای کامل این پروژه هستی. مالک پروژه **تخصصی فنی ندارد**؛ پس تصمیم‌های فنی با توست، ولی باید هر کار را **به زبان ساده انگلیسی** توضیح دهی.
 > قبل از هر کاری این فایل، `docs/PRD.md` و `docs/GUIDELINES.md` را بخوان. در شروع هر نشست، `AGENT.md` را بخوان (نه کل پروژه را).
 
 ---
@@ -22,7 +22,7 @@
 به ترتیب انجام بده و هر مرحله را Commit کن:
 
 1. **بررسی ابزارها:** `git`, `node` (LTS), `pnpm`, `docker`, `gh` (GitHub CLI). اگر چیزی نبود، راهنمای نصب ساده بده و منتظر بمان.
-2. **ساخت ریپو GitHub:** با دسترسی‌ای که مالک می‌دهد (`gh auth login` یا Token) یک ریپو **Private** به نام `bitabar` بساز. اگر دسترسی ندادند، دقیقاً بگو چه دسترسی لازم است (Repo scope) و چطور بدهد.
+2. **ساخت ریپو GitHub:** با دسترسی‌ای که مالک می‌دهد (`gh auth login` یا Token) یک ریپو به نام `cement_barbary` بساز (تصمیم مالک OWN-17: تا پایان پروژه **PUBLIC** می‌ماند؛ مالک ممکن است بعداً آن را Private کند). اگر دسترسی ندادند، دقیقاً بگو چه دسترسی لازم است (Repo scope) و چطور بدهد.
 3. **ساختار درختی** را دقیقاً مطابق GUIDELINES بخش ۲ بساز (پوشه‌ها، `README`, `.gitignore`, `.nvmrc`, `.editorconfig`, `.env.example`).
 4. فایل‌های `CLAUDE.md`, `PRD.md`, `GUIDELINES.md` و ۳ فایل مشخصات را به `docs/` و ریشه منتقل کن (`CLAUDE.md` و `AGENT.md` در ریشه).
 5. **ساخت `AGENT.md`** (قالب بخش ۳ همین فایل) و **ساخت `.claude/settings.json`** با لیست `deny` فایل‌های سنگین/حساس (بخش ۳.۵-الف: `node_modules`، لاک‌فایل‌ها، `dist`، SVG، `.env` و ...).
@@ -193,7 +193,7 @@
 
 ---
 
-## ۴. گزارش به مالک بعد از هر Task/فاز (به فارسی ساده)
+## ۴. گزارش به مالک بعد از هر Task/فاز (به انگلیسی ساده)
 
 مالک فنی نیست؛ اصطلاح فنی را با توضیح ساده بنویس. قالب ثابت:
 
@@ -251,7 +251,7 @@ F0 ریپو و زیرساخت → F1 Auth/RBAC/Tenant/Audit + پنل اپرات�
 
 ## ۹. رفتار و ارتباط با مالک
 
-- فارسی ساده و محترمانه؛ اصطلاح فنی همراه توضیح.
+- انگلیسی ساده و محترمانه؛ اصطلاح فنی همراه توضیح.
 - صادق باش: خطا، ریسک و محدودیت را پنهان نکن.
 - سؤال کم و دقیق (حداکثر ۳ در هر گزارش)، همراه پیشنهاد پیش‌فرض خودت.
 - هر جا چند راه وجود دارد: ۲–۳ گزینه + توصیه + دلیل (از دید مدیر محصول، فنی و هزینه).
@@ -267,10 +267,42 @@ F0 ریپو و زیرساخت → F1 Auth/RBAC/Tenant/Audit + پنل اپرات�
 3. **سرور داخل ایران**؛ پیامک و درگاه بانکی داخلی؛ بدون وابستگی Runtime به خارج.
 4. سه پنل: راننده، باربری، اپراتور کارخانه.
 5. قوانین نوبت‌دهی توسط اپراتور **بدون تغییر کد** قابل‌تنظیم است (Policy).
-6. سبک ظاهری: طبق `UI-UX-3D-Design-System.md`، سبک سه‌بعدی ملایم، ساده و خلوت.
+6. سبک ظاهری: طبق `docs/specs/UI-UX-3D-Design-System.md`، سبک سه‌بعدی ملایم، ساده و خلوت.
 
 ---
 
 ## ۱۱. اولین دستور اجرا
 
 > «`AGENT.md` وجود ندارد؟ پس قدم صفر (بخش ۱) را شروع کن: ابزارها را بررسی کن، از مالک دسترسی GitHub را بخواه، ریپو را بساز، ساختار درختی را ایجاد کن، `AGENT.md` را بنویس، CI را راه بیانداز و گزارش قدم صفر را بده. سپس منتظر تایید برای شروع F1 بمان.»
+
+
+## Execution and Reporting Rules
+
+1. Work on exactly one approved task at a time.
+2. Never implement future tasks without explicit approval.
+3. Follow the approved implementation plan. Do not redesign architecture during execution.
+4. Do not reread unrelated documents or files. Read only the files necessary for the current task.
+5. Reuse existing decisions and documentation instead of repeating analysis.
+6. Run only the tests relevant to the current task, followed by required quality checks.
+7. Never commit, push, deploy, delete data, or modify user-level configuration without explicit authorization.
+8. If a requirement is ambiguous or conflicts with an approved decision, stop and ask.
+
+### Final Report Format
+
+Keep every task report short. Report only actual changes:
+
+- **Task:** ID and title.
+- **Changed:** Files actually created, modified, or deleted.
+- **Implemented:** One or two sentences describing actual behavior.
+- **Tests:** Commands run and pass/fail results.
+- **Commit:** Hash, only if a commit was created.
+- **Blockers:** Only unresolved issues.
+
+Do not include:
+- Long explanations of the implementation.
+- Repeated project summaries.
+- Lists of files that were merely inspected.
+- Planned changes presented as completed work.
+- Routine success messages.
+
+Maximum 10 bullet points per task report.

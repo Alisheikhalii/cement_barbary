@@ -1,0 +1,15 @@
+node_modules
+pnpm-lock.yaml
+dist
+build
+.next
+.turbo
+coverage
+playwright-report
+test-results
+# Source documents from the owner are kept verbatim
+docs/specs
+docs/PRD.md
+docs/GUIDELINES.md
+docs/F7-security-benchmark.md
+CLAUDE.md
