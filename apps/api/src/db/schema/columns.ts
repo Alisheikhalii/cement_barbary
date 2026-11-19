@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { timestamp, uuid } from 'drizzle-orm/pg-core';
+import { customType, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
 
 /**
@@ -21,8 +21,17 @@ export const timestamps = {
     .$onUpdateFn(() => sql`now()`),
 };
 
-/** Nullable; the FK to users is added in F1-03. */
+/** Nullable; users.created_by gets a composite FK in users.ts (ADR-006 U6). */
 export const createdBy = () => uuid('created_by');
 
 /** Soft delete (operational tables only). */
 export const deletedAt = () => timestamp('deleted_at', { withTimezone: true, mode: 'date' });
+
+/**
+ * Binary column for encrypted PII blobs and blind-index hashes (ADR-006 U7/U8).
+ * node-pg maps Buffer <-> bytea natively, so no codec is needed.
+ */
+export const bytea = (name: string) =>
+  customType<{ data: Buffer; driverData: Buffer }>({
+    dataType: () => 'bytea',
+  })(name);
