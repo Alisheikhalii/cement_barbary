@@ -28,6 +28,11 @@ interface GlobalSetupProject {
 let container: StartedPostgreSqlContainer | undefined;
 
 export async function setup(project: GlobalSetupProject): Promise<void> {
+  // Random per-run PII keys (ADR-006 U17): int tests exercise the real PII
+  // service without ever storing fixed keys.
+  process.env.PII_ENC_KEY ??= randomBytes(32).toString('base64');
+  process.env.PII_HMAC_KEY ??= randomBytes(32).toString('base64');
+
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const ownerUrl = container.getConnectionUri();
 

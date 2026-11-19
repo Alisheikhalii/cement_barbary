@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 
+import { randomBytes } from 'node:crypto';
+
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import helmet from 'helmet';
@@ -20,8 +22,11 @@ describe('API skeleton (integration)', () => {
   const dbHealthStub = { ping: vi.fn<() => Promise<void>>() };
 
   beforeAll(async () => {
-    // DATABASE_URL is required by env validation; DbHealth is stubbed, so nothing connects to it.
+    // DATABASE_URL and the PII keys are required by env validation; DbHealth is
+    // stubbed, so nothing connects to the DB. Keys are random per run (U17).
     process.env.DATABASE_URL ??= 'postgresql://bitabar_app:dummy@localhost:5432/bitabar';
+    process.env.PII_ENC_KEY ??= randomBytes(32).toString('base64');
+    process.env.PII_HMAC_KEY ??= randomBytes(32).toString('base64');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(DbHealth)
       .useValue(dbHealthStub)

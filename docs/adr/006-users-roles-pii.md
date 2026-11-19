@@ -30,8 +30,11 @@ hardening (a)–(g) from the plan approval is folded into U7–U16 below. Full p
   NULL allowed). `tenants.created_by` stays without an FK because platform actors are not tenant users (U4).
   Closes D8 from ADR-005.
 - **U7 — Phone and national ID are encrypted** (owner Q2) with AES-256-GCM (Node `node:crypto`, no new dependency).
-  Random 12-byte IV per value; AAD = `tenant_id + table.column`, so a ciphertext moved to another row, column or
-  tenant fails to decrypt (change (c)). Blob format in `bytea`:
+  Random 12-byte IV per value; AAD = `tenant_id + ":" + table.column + ":" + row_id`, so a ciphertext moved to
+  another row, column or tenant fails to decrypt (change (c), hardened at T02 review: the row id is part of the
+  AAD). The id parts must be UUIDs and the column a plain `table.column` identifier (`buildAad` validates with Zod
+  and rejects anything else), so the `:` separator is unambiguous. **Row ids are generated app-side**
+  (`randomUUID`) before encrypting, so the id is known at write time. Blob format in `bytea`:
   `[format version 1B][key_version 1B][IV 12B][tag 16B][ciphertext]` — the `key_version` sits next to the ciphertext
   so keys can rotate later without a data-format change (change (a)). Unknown format version or key_version, a wrong
   key, or any tampered byte fails with a generic error containing no plaintext.

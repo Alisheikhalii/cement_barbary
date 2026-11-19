@@ -11,8 +11,10 @@ Every encrypted value is one `bytea` blob:
 ```
 
 - Algorithm: AES-256-GCM (`node:crypto`), random 12-byte IV per value — two encryptions of the same value differ.
-- AAD (authenticated extra data): `tenant_id + table.column`. A blob copied to another column, row or tenant fails
-  to decrypt; one tampered byte fails.
+- AAD (authenticated extra data): `tenant_id:table.column:row_id`. A blob copied to another row, column or tenant
+  fails to decrypt; one tampered byte fails. The id parts must be UUIDs and the column a plain `table.column`
+  identifier, so `:` separates unambiguously (`buildAad` enforces this).
+- The row id is generated **app-side** (`randomUUID`) before encrypting, so it is known at write time.
 - `key_version` = the active `PII_KEY_ID` at write time. Decryption reads it from the blob, so a future rotation
   can keep old keys for old rows without a format change.
 
@@ -48,8 +50,11 @@ Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('base
 
 ## Masking and logging
 
-- pino redacts `phone`, `nationalId`, `national_id`, `*_enc`, `*_hash` at any depth.
+- pino redacts, at any depth, any key that mentions a phone / mobile / national id or carries an
+  `*_enc` / `*_hash` (or camelCase `…Enc` / `…Hash`) suffix — see `apps/api/src/security/pii/log-redact.ts`.
 - No plaintext phone or national ID in logs, error messages or test snapshots. Error messages never echo the input.
+- **Redaction is key-based**: it cannot see PII inside free-text values. Never put a phone or national ID into a
+  URL (query strings are logged), an error message, or a log message string.
 - Display helpers: `maskPhone()` → `0912***0001`, `maskNationalId()` → `******1234`.
 
 ## How to add a new encrypted field
@@ -57,7 +62,8 @@ Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('base
 1. Normalize and validate the input in `security/pii/normalize.ts`.
 2. Add `<field>_enc bytea` + `<field>_hash bytea` columns (NULL pair: both NULL or both set — add a CHECK).
 3. Partial unique index on `(tenant_id, <field>_hash) WHERE deleted_at IS NULL`.
-4. Write through the PII service (`encrypt` + `blindIndex`), never through raw SQL with plaintext.
-5. Read through `decrypt` with the same AAD; never log the decrypted value.
-6. Add the field name and `*_enc`/`*_hash` patterns to the pino redact list if not already covered.
-7. Tests: round trip, wrong-AAD failure, per-tenant uniqueness, redaction.
+4. Generate the row id app-side before writing; build the AAD with `buildAad(tenantId, 'table.column', rowId)`.
+5. Write through the PII service (`encrypt` + `blindIndex`), never through raw SQL with plaintext.
+6. Read through `decrypt` with the same AAD (same tenant, column AND row id); never log the decrypted value.
+7. Add the field name and `*_enc`/`*_hash` patterns to the pino redact list if not already covered.
+8. Tests: round trip, wrong-AAD failure (tenant, column AND row), per-tenant uniqueness, redaction.

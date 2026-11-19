@@ -10,8 +10,11 @@ import { describe, expect, it } from 'vitest';
  */
 const apiRoot = fileURLToPath(new URL('..', import.meta.url));
 
+// One shared ESLint instance: constructing it per assertion made this suite
+// time out under parallel worker load.
+const eslint = new ESLint({ cwd: apiRoot });
+
 async function lintRules(code: string, filePath: string): Promise<(string | null)[]> {
-  const eslint = new ESLint({ cwd: apiRoot });
   const [result] = await eslint.lintText(code, { filePath });
   return result ? result.messages.map((m) => m.ruleId) : [];
 }
@@ -25,7 +28,8 @@ const FORBIDDEN_IMPORTS = [
   "import { DB } from '../../db/database.providers.js';\nexport const probe = DB;\n",
 ];
 
-describe('ESLint D11 boundary (no-restricted-imports)', () => {
+// Programmatic ESLint is slow on contended machines; give it room.
+describe('ESLint D11 boundary (no-restricted-imports)', { timeout: 30000 }, () => {
   it.each(FORBIDDEN_IMPORTS)('rejects raw DB imports outside src/db/**: %s', async (code) => {
     const rules = await lintRules(code, 'src/modules/probe/probe.ts');
     expect(rules).toContain('no-restricted-imports');

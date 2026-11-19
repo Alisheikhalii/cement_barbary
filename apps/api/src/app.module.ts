@@ -9,6 +9,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './db/database.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { PiiModule } from './security/pii/pii.module.js';
+import { redactPiiLogObject } from './security/pii/log-redact.js';
 
 @Module({
   imports: [
@@ -19,14 +21,17 @@ import { HealthModule } from './modules/health/health.module.js';
       pinoHttp: {
         level: process.env.NODE_ENV === 'test' ? 'silent' : 'info',
         genReqId: () => randomUUID(),
-        // Never log credentials (GUIDELINES §6.3).
+        // Never log credentials (GUIDELINES §6.3) or personal data (ADR-006 U11:
+        // the formatter hides phone / national id / *_enc / *_hash at any depth).
         redact: {
           paths: ['req.headers.authorization', 'req.headers.cookie'],
           censor: '[redacted]',
         },
+        formatters: { log: redactPiiLogObject },
       },
     }),
     HealthModule,
+    PiiModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
