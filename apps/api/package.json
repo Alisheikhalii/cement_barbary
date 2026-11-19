@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:prod": "node dist/db/migrate.js"
   },
   "dependencies": {
     "@bitabar/shared": "workspace:*",
@@ -43,6 +45,7 @@
     "drizzle-kit": "^0.31.11",
     "supertest": "^7.0.0",
     "testcontainers": "^12.2.1",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "unplugin-swc": "^1.5.1",
     "vitest": "^5.1.0"

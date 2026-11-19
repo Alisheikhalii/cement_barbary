@@ -53,6 +53,8 @@
 ## ۸. دستورهای مهم (اجرا، تست، Migration، Seed، Deploy)
 
 - `sh infra/scripts/dev-up.sh` | `docker compose -f infra/compose/docker-compose.dev.yml down` (بدون `-v`)
+- Migration: `pnpm --filter @bitabar/api db:generate` (ساخت) | `db:check` | `db:migrate` (اجرا با `DATABASE_MIGRATION_URL`) | `db:migrate:prod` (روی build). هرگز خودکار هنگام Start اجرا نمی‌شود.
+- فعال‌سازی لاگین نقش Runtime در dev: `sh infra/scripts/db-app-user.sh` (نیازمند `APP_DB_PASSWORD` واقعی در `.env`).
 - Gitleaks: `docker run --rm -v "<repo>:/repo:ro" zricethezav/gitleaks:v8.28.0 git /repo --config /repo/.gitleaks.toml --redact`
 - `pnpm install` | `pnpm lint` | `pnpm typecheck` | `pnpm test` | `pnpm build` | `pnpm format`
 
