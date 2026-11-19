@@ -4,22 +4,28 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import helmet from 'helmet';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../src/app.module.js';
+import { DbHealth } from '../src/db/db-health.js';
 
 /**
- * Boots the real AppModule (in-memory, no database needed yet) and verifies
- * the HTTP contract: envelope, error format, request id and security headers.
- * Mirrors the helmet wiring of `main.ts`.
+ * Boots the real AppModule (in-memory) and verifies the HTTP contract:
+ * envelope, error format, request id and security headers. DbHealth is
+ * stubbed so the readiness behavior is tested without a database (the real
+ * DB path is covered by test/database.int.test.ts).
  */
 describe('API skeleton (integration)', () => {
   let app: INestApplication;
+  const dbHealthStub = { ping: vi.fn<() => Promise<void>>() };
 
   beforeAll(async () => {
-    // DATABASE_URL is required by env validation; the skeleton does not connect to it yet.
+    // DATABASE_URL is required by env validation; DbHealth is stubbed, so nothing connects to it.
     process.env.DATABASE_URL ??= 'postgresql://bitabar_app:dummy@localhost:5432/bitabar';
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(DbHealth)
+      .useValue(dbHealthStub)
+      .compile();
     app = moduleRef.createNestApplication();
     app.use(helmet());
     await app.init();
@@ -34,8 +40,23 @@ describe('API skeleton (integration)', () => {
     expect(res.body).toEqual({ data: { status: 'ok' } });
   });
 
-  it('GET /health/ready returns 200', async () => {
+  it('GET /health/ready returns 200 when the database is healthy', async () => {
+    dbHealthStub.ping.mockResolvedValue(undefined);
     const res = await request(app.getHttpServer()).get('/health/ready').expect(200);
+    expect(res.body).toEqual({ data: { status: 'ok' } });
+  });
+
+  it('GET /health/ready returns 503 with the standard envelope when the database is down', async () => {
+    dbHealthStub.ping.mockRejectedValue(new Error('connection refused'));
+    const res = await request(app.getHttpServer()).get('/health/ready').expect(503);
+    // The global filter has no specific 503 entry, so it emits HTTP_503 with a
+    // generic Persian message — no database details reach the client.
+    expect(res.body).toEqual({ error: { code: 'HTTP_503', message: 'درخواست نامعتبر است' } });
+  });
+
+  it('GET /health/live stays 200 while the database is down', async () => {
+    dbHealthStub.ping.mockRejectedValue(new Error('connection refused'));
+    const res = await request(app.getHttpServer()).get('/health/live').expect(200);
     expect(res.body).toEqual({ data: { status: 'ok' } });
   });
 

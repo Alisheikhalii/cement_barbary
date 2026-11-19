@@ -7,11 +7,13 @@ import { LoggerModule } from 'nestjs-pino';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter.js';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
 import { ConfigModule } from './config/config.module.js';
+import { DatabaseModule } from './db/database.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 
 @Module({
   imports: [
     ConfigModule,
+    DatabaseModule,
     // Structured JSON logs with a request id per request (GUIDELINES §10).
     LoggerModule.forRoot({
       pinoHttp: {
