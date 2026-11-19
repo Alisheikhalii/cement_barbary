@@ -17,4 +17,9 @@ export class DomainError extends Error {
   static badInput(details?: Record<string, unknown>): DomainError {
     return new DomainError('BAD_INPUT', 'ورودی نامعتبر است', 400, details);
   }
+
+  /** Tenant data was requested without an active tenant scope — always a server bug (fail closed). */
+  static tenantContextMissing(): DomainError {
+    return new DomainError('TENANT_CONTEXT_MISSING', 'خطای داخلی سرور رخ داد', 500);
+  }
 }
