@@ -25,9 +25,11 @@
 ```sql
 ALTER TABLE <t> ENABLE ROW LEVEL SECURITY;
 CREATE POLICY <t>_tenant_isolation ON <t> FOR ALL TO bitabar_app
-  USING (tenant_id = app.current_tenant_id())
-  WITH CHECK (tenant_id = app.current_tenant_id());
+  USING (tenant_id = (SELECT app.current_tenant_id()))
+  WITH CHECK (tenant_id = (SELECT app.current_tenant_id()));
 ```
+
+(The subselect wrapping makes the planner evaluate the context function once per query instead of once per row. The context functions are also pinned to `SET search_path = pg_catalog, pg_temp` so their bodies cannot be hijacked by objects in other schemas.)
 
 `FORCE ROW LEVEL SECURITY` is intentionally **not** used: the owner role is for migrations only, and the app never connects as owner (D4).
 
@@ -46,3 +48,5 @@ CREATE POLICY <t>_tenant_isolation ON <t> FOR ALL TO bitabar_app
 - The app cannot run migrations (no owner credentials in app config) and cannot bypass RLS (D4); enabling the runtime login is a deliberate, per-environment step.
 - `TenantDb` is the only path to tenant data; bypassing it is a lint error (D11).
 - Tenant creation and any cross-tenant administration are deferred to a later decision (Q1); nothing in F1-02 blocks either answer.
+- **Migration-owner prerequisites:** the first migration contains `CREATE ROLE`, which requires the `CREATEROLE` privilege. Decision: the migration owner role must have `CREATEROLE`. This holds in dev (`POSTGRES_USER` in the compose stack) and in tests (the Testcontainers superuser); in production the F8 runbook either grants `CREATEROLE` to the migration owner or an admin pre-creates `bitabar_app` before the first migration.
+- **Limitation — RLS is not SQL-injection protection:** any connection that can run `set_config` can change `app.tenant_id`. RLS protects against missing or wrong tenant filters in application code; it does not protect against SQL injection. Parameterized queries and Zod input validation remain mandatory everywhere.

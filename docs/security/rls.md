@@ -1,0 +1,42 @@
+# Row-Level Security (RLS) — tenant isolation at the database
+
+Status: active since F1-02 | Decisions: ADR-005 (`docs/adr/005-database-drizzle-rls.md`)
+
+The database is the second isolation layer (the app layer is `TenantDb`). If
+application code ever forgets a `WHERE tenant_id = ...`, PostgreSQL still hides
+other tenants' rows. The app connects only as `bitabar_app`: `NOSUPERUSER`,
+`NOBYPASSRLS`, not a table owner, DML grants only. RLS does not apply to
+superusers or table owners, which is exactly why the app must never be one.
+
+## Policy template (apply to EVERY tenant-owned table)
+
+```sql
+ALTER TABLE <t> ENABLE ROW LEVEL SECURITY;
+CREATE POLICY <t>_tenant_isolation ON <t> FOR ALL TO bitabar_app
+  USING (tenant_id = (SELECT app.current_tenant_id()))
+  WITH CHECK (tenant_id = (SELECT app.current_tenant_id()));
+```
+
+The subselect wrapping makes the planner evaluate the context function once per
+query. `app.current_tenant_id()` reads the transaction-local setting
+`app.tenant_id` and returns NULL when it is missing — so with no context,
+policies match zero rows and `WITH CHECK` rejects writes (fail closed,
+ADR-005 D6). Both context functions are pinned to
+`SET search_path = pg_catalog, pg_temp` so their bodies cannot be hijacked by
+objects in other schemas.
+
+`FORCE ROW LEVEL SECURITY` is intentionally not used: the schema owner exists
+only to run migrations, and the app never connects as owner.
+
+## How to add RLS to a new table
+
+1. Define the table in `apps/api/src/db/schema/` using the standard helpers
+   (`id()`, `tenantId()`, `timestamps`, …) and an index leading with `tenant_id`.
+2. Run `pnpm --filter @bitabar/api db:generate` for the table DDL.
+3. Run `pnpm --filter @bitabar/api db:generate --custom --name=rls_<table>` and
+   fill the file with the template above (replace `<t>`).
+4. Add a probe of the table's isolation to `apps/api/test/rls.int.test.ts`.
+
+Grants for new tables come from `ALTER DEFAULT PRIVILEGES` (set in migration
+`0001_rls_foundation`), so no extra `GRANT` statements are needed as long as
+migrations run as the schema owner.
