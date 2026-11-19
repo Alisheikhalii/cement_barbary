@@ -28,7 +28,7 @@ describe('ZodValidationPipe', () => {
 
   it('strips unknown fields (mass-assignment protection)', () => {
     const pipe = new ZodValidationPipe(schema);
-    expect(pipe.transform({ mobile: '09120000000', role: 'PLATFORM_ADMIN' })).toEqual({
+    expect(pipe.transform({ mobile: '09120000000', role: 'DRIVER' })).toEqual({
       mobile: '09120000000',
     });
   });

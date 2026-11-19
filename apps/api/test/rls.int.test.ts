@@ -72,8 +72,8 @@ describe('RLS isolation suite (runtime role)', () => {
     userADeletable = await createUser(owner, tenantA, { phone: '09120000003' });
     userASoftDelete = await createUser(owner, tenantA, { phone: '09120000004' });
     await assignRole(owner, tenantA, userA, 'FACTORY_OPERATOR', 'tenant');
-    await assignRole(owner, tenantB, userB, 'AUDITOR', 'tenant');
-    await assignRole(owner, tenantA, userADeletable, 'AUDITOR', 'tenant');
+    await assignRole(owner, tenantB, userB, 'DRIVER', 'driver');
+    await assignRole(owner, tenantA, userADeletable, 'DRIVER', 'driver');
 
     app = makeAppPool();
     tenantDb = new TenantDb(drizzle(app, { schema }));
@@ -483,7 +483,7 @@ describe('RLS isolation suite (runtime role)', () => {
       expect(denied.rowCount).toBe(0);
 
       const own = await tx.execute(
-        sql`delete from user_roles where user_id = ${userADeletable} and role_code = 'AUDITOR'`,
+        sql`delete from user_roles where user_id = ${userADeletable} and role_code = 'DRIVER'`,
       );
       expect(own.rowCount).toBe(1);
     });
@@ -501,14 +501,16 @@ describe('RLS isolation suite (runtime role)', () => {
       inTenant(tenantA, async (tx) => {
         await tx.execute(
           sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
-              values (${tenantA}, ${userB}, 'AUDITOR', 'tenant')`,
+              values (${tenantA}, ${userB}, 'DRIVER', 'driver')`,
         );
       }),
       '23503',
     );
-    // (b) PLATFORM_ADMIN: the pair exists in roles, so the FK passes and the
-    // CHECK (role_scope <> 'platform') fires → 23514 — as the app AND as the
-    // owner (U4 holds even for the role that bypasses RLS).
+    // (b) Platform scope: 'PLATFORM_ADMIN' no longer exists in the catalog
+    // (removed in 0004, T05b), but PostgreSQL evaluates CHECK constraints
+    // before the AFTER ROW triggers that enforce FKs — so the CHECK
+    // (role_scope <> 'platform') is still what fires → 23514, as the app AND
+    // as the owner (the CHECK holds even for the role that bypasses RLS).
     await expectPgRejection(
       inTenant(tenantA, async (tx) => {
         await tx.execute(
@@ -526,15 +528,16 @@ describe('RLS isolation suite (runtime role)', () => {
       ),
       '23514',
     );
-    // (c) Forged scope for a real role: ('AUDITOR','carrier') is not in roles
-    // → composite FK violation 23503. The scope cannot lie. (AUDITOR is used
-    // because userA holds no AUDITOR link — a held role would hit the PK
-    // first and prove nothing about the FK.)
+    // (c) Forged scope for a real role: DRIVER exists with scope 'driver', so
+    // the pair ('DRIVER','carrier') is not in roles → composite FK violation
+    // 23503. The scope cannot lie. (DRIVER is used because userA holds no
+    // DRIVER link — a held role would hit the PK first and prove nothing
+    // about the FK.)
     await expectPgRejection(
       inTenant(tenantA, async (tx) => {
         await tx.execute(
           sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
-              values (${tenantA}, ${userA}, 'AUDITOR', 'carrier')`,
+              values (${tenantA}, ${userA}, 'DRIVER', 'carrier')`,
         );
       }),
       '23503',
@@ -545,7 +548,7 @@ describe('RLS isolation suite (runtime role)', () => {
       inTenant(tenantA, async (tx) => {
         await tx.execute(
           sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
-              values (${tenantB}, ${userB}, 'AUDITOR', 'tenant')`,
+              values (${tenantB}, ${userB}, 'DRIVER', 'driver')`,
         );
       }),
       '42501',
@@ -554,7 +557,7 @@ describe('RLS isolation suite (runtime role)', () => {
 
   it('roles — globally readable; INSERT/UPDATE/DELETE denied for the runtime role', async () => {
     const listed = await app.query('select code from roles');
-    expect(listed.rows).toHaveLength(6);
+    expect(listed.rows).toHaveLength(3);
     await expect(
       app.query(`insert into roles (code, name_fa, scope) values ('X', 'x', 'tenant')`),
     ).rejects.toMatchObject({ code: '42501' });

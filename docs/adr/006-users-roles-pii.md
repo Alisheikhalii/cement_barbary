@@ -2,6 +2,16 @@
 
 2026-11-19 | Accepted
 
+> **Amendment 2026-11-19 (T05b, owner product decision):** the role catalog is trimmed to **3 roles** —
+> `FACTORY_OPERATOR`, `CARRIER_ADMIN`, `DRIVER`. `PLATFORM_ADMIN`, `CARRIER_OPERATOR` and `AUDITOR` are deleted by
+> migration `0004_role_catalog_trim` (with a guard that aborts if any `user_roles` row still references them);
+> migrations 0002/0003 are forward-only and were not edited. `CARRIER_ADMIN` becomes the single carrier role and
+> takes over the `CARRIER_OPERATOR` duties from the PRD (announcements, cancel approval, permits) — **OD-37 is
+> closed**; its permission matrix is written in F1-05. Where the text below says "6 rows" (U1) read 3; U4 is moot
+> in practice (no platform-scoped role exists to assign) but its composite-FK + CHECK machinery intentionally
+> stays and is still tested; owner Q1 ("no `PLATFORM_ADMIN` web login") is superseded — the role no longer
+> exists. The rest of this ADR is unchanged history.
+
 **Context:** F1-03 adds the user model: a global role catalog, tenant-owned `users` and `user_roles`, and the
 protection of personal data (phone, national ID) that GUIDELINES §4 requires. Owner decisions of 2026-11-19:
 `PLATFORM_ADMIN` exists as data but gets no web login in v1 (Q1); the phone is encrypted exactly like the national

@@ -47,7 +47,8 @@ Global tables (no `tenant_id`, each with a written reason — ADR-006 U14):
 
 - `tenants` — platform-owned tenant registry; the row IS the tenant, RLS
   compares `id` to the context (F1-02).
-- `roles` — global read-only role catalog; `bitabar_app` has SELECT only
+- `roles` — global read-only role catalog (3 roles; trimmed from 6 in
+  `0004_role_catalog_trim`, T05b); `bitabar_app` has SELECT only
   (INSERT/UPDATE/DELETE revoked in `0003_users_roles_rls`).
 
 Tenant-owned (template above): `users`, `user_roles`.

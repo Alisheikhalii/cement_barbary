@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — F1-03 در حال انجام: T01 (ADR-006)، T02 (PII crypto)، T03+T04 (schema/Migration/RLS) کامل و Commit محلی شدند؛ T05 در انتظار بازبینی مالک | آخرین Tag: — | آخرین Commit: 0da92a6
+- فاز فعلی: **F1** — F1-03 در حال انجام: T01–T05 کامل و Commit محلی شدند؛ T05b (کاهش کاتالوگ نقش‌ها به ۳ نقش — تصمیم مالک) در حال Commit است؛ بعدی T06 | آخرین Tag: — | آخرین Commit: 1907d3d
 - CI: سبز (F0) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۲۹
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
@@ -26,12 +26,14 @@
 - `.gitattributes` با `eol=lf`: توسعه روی ویندوز، CI و سرور لینوکس.
 - ADR-001 نسخه ابزارها + `.npmrc` رجیستری رسمی npm | ADR-002 deny-list | ADR-003 ریپو PUBLIC + داده مصنوعی | ADR-004 استثنای موقت audit برای picomatch (`docs/adr/`).
 - ADR-005 دیتابیس/ایزولاسیون Tenant: Drizzle + `pg`، دو نقش DB (owner برای Migration، `bitabar_app` محدود برای Runtime)، RLS + `TenantDb` (D1–D13) — `docs/adr/005-database-drizzle-rls.md`.
-- ADR-006 کاربران/نقش‌ها/PII: نقش‌ها داده‌اند (۶ نقش، فقط Migration)، `users`/`user_roles` با RLS و FK ترکیبی، رمزنگاری AES-256-GCM با AAD و key_version، Blind Index با HMAC جدا، یکتایی per-tenant، Seed فقط dev — `docs/adr/006-users-roles-pii.md` (+ `docs/security/pii.md`).
-- **تصمیمات مالک برای F1 (۱۴۰۵/۰۸/۲۷):** ORM = **Drizzle** (طبق برنامه معماری مالک؛ ADR در F1-02 نوشته می‌شود). نقش `CARRIER_ADMIN` فعلاً **فقط ورود، بدون هیچ مجوز عملیاتی** (موقت، در انتظار OD-37). ترتیب رسمی Taskهای F1 طبق برنامه مالک: F1-01 اسکلت API، F1-02 دیتابیس/Drizzle/Migration/Tenant Context، F1-03 کاربران و نقش‌ها (+Seed)، F1-04 احراز هویت، F1-05 RBAC، F1-06 Audit/Idempotency/Outbox، F1-07 داده پایه، F1-08 باربری‌ها، F1-09 اسکلت Web، F1-10 تست ایزولاسیون/IDOR/RLS (+ورود ۴ نقش)، F1-11 Dockerfile و Build ایمیج در CI. محل UI پنل اپراتور (احتمالاً داخل F1-09) در شروع F1-09 تایید می‌شود.
+- ADR-006 کاربران/نقش‌ها/PII: نقش‌ها داده‌اند (۳ نقش — در T05b از ۶ نقش کاهش یافت، فقط Migration)، `users`/`user_roles` با RLS و FK ترکیبی، رمزنگاری AES-256-GCM با AAD و key_version، Blind Index با HMAC جدا، یکتایی per-tenant، Seed فقط dev — `docs/adr/006-users-roles-pii.md` (+ `docs/security/pii.md`).
+- **تصمیم مالک T05b (۱۴۰۵/۰۸/۲۹):** کاتالوگ نقش‌ها به ۳ نقش کاهش یافت (`FACTORY_OPERATOR`، `CARRIER_ADMIN`، `DRIVER`)؛ `PLATFORM_ADMIN`/`CARRIER_OPERATOR`/`AUDITOR` با Migration سفارشی `0004_role_catalog_trim` حذف شدند (forward-only؛ 0002/0003 ویرایش نشدند؛ guard در برابر ارجاع `user_roles`). `CARRIER_ADMIN` تنها نقش باربری است و مسئولیت‌های `CARRIER_OPERATOR` (اعلام بار، تایید لغو، صدور مجوز) را بر عهده گرفت — **OD-37 بسته شد**؛ ماتریس مجوز در F1-05 نوشته می‌شود. اصلاحیه در ADR-006 (تاریخچه بازنویسی نشد).
+- **تصمیمات مالک برای F1 (۱۴۰۵/۰۸/۲۷):** ORM = **Drizzle** (طبق برنامه معماری مالک؛ ADR در F1-02 نوشته می‌شود). نقش `CARRIER_ADMIN` فعلاً **فقط ورود، بدون هیچ مجوز عملیاتی** (موقت، در انتظار OD-37). ترتیب رسمی Taskهای F1 طبق برنامه مالک: F1-01 اسکلت API، F1-02 دیتابیس/Drizzle/Migration/Tenant Context، F1-03 کاربران و نقش‌ها (+Seed)، F1-04 احراز هویت، F1-05 RBAC، F1-06 Audit/Idempotency/Outbox، F1-07 داده پایه، F1-08 باربری‌ها، F1-09 اسکلت Web، F1-10 تست ایزولاسیون/IDOR/RLS (+ورود ۳ نقش — پس از کاهش کاتالوگ در T05b)، F1-11 Dockerfile و Build ایمیج در CI. محل UI پنل اپراتور (احتمالاً داخل F1-09) در شروع F1-09 تایید می‌شود.
 - `apps/api` به‌صورت **ESM** اجرا می‌شود (هم‌راستا با بقیه ریپو)؛ تست‌های NestJS با `unplugin-swc` (esbuild متادیتای decorator ندارد). `@nestjs/cli` برای build/dev استفاده می‌شود (GUIDELINES §۳.۵-د).
 
 ## ۴. انجام‌شده (Changelog) ← جدیدترین بالا
 
+- [۱۴۰۵/۰۸/۲۹ | 1907d3d | F1-03 T05] سوئیت ایزولاسیون `users`/`user_roles` (۱۱ سناریوی جدید به‌عنوان `bitabar_app`: fail-closed، IDOR، 42501، حذف نرم، رد FK/CHECK/scope جعلی، یکتایی phone_hash per-tenant + استفاده مجدد پس از حذف نرم، CHECKهای U12، خالی‌بودن national_id) + guard سخت‌گیرانه U14 با allowlist و کنترل منفی. Fixtureها از مسیر واقعی PII. نتیجه: ۱۰۰ واحد + ۴۴ ادغام سبز.
 - [۱۴۰۵/۰۸/۲۹ | 0da92a6 | F1-03 T04] Migration سفارشی 0003: درج ۶ نقش (ON CONFLICT)، لغو INSERT/UPDATE/DELETE روی `roles`، الگوی RLS روی `users`/`user_roles`، لغو DELETE روی `users` (حذف نرم، U13). نام‌های فارسی نقش‌ها با تست بایت‌محور (hex) روی کانتینر تازه تایید شدند. `rls.md`: فهرست U14 + هشدار recreate.
 - [۱۴۰۵/۰۸/۲۹ | df4f8b5 | F1-03 T03] schemaهای `roles`/`users`/`user_roles` + Migration تولیدی 0002: FKهای ترکیبی (U4/U5/U6)، CHECKهای U12، indexهای یکتای partial per-tenant؛ اهداف FK به‌صورت UNIQUE constraint داخل CREATE TABLE (نه index) تا ترتیب Migration معتبر باشد.
 - [۱۴۰۵/۰۸/۲۹ | 47577a0 | F1-03 T02] سرویس PII: AES-256-GCM با AAD سه‌بخشی `tenant:column:row` (اعتبارسنجی Zod برای UUIDها)، Blind Index با HMAC جدا، نرمال‌سازی موبایل/کدملی (ارقام فارسی/عربی + checksum)، redaction ساختاری pino (مسیر اجدادی، چرخه → `'[Circular]'`)، اعتبارسنجی env برای `PII_ENC_KEY`/`PII_HMAC_KEY`/`PII_KEY_ID`. ۱۰۰ تست واحد؛ حلقه ۱۰ باره سبز.
@@ -44,14 +46,13 @@
 
 ## ۵. در حال انجام / بعدی
 
-- F1-03 در حال انجام: T01–T04 Commit محلی شدند (تا `0da92a6`). T05 (سوئیت ایزولاسیون users + guard سخت‌گیرانه U14) پیاده شد و در انتظار بازبینی مالک است؛ بعدی: T06 (UsersRepository)، T07 (Seed)، T08 (جمع‌بندی). **Push/Tag فقط با اجازه مالک.**
+- F1-03 در حال انجام: T01–T05 Commit محلی شدند (تا `1907d3d`)؛ T05b (کاهش نقش‌ها به ۳ نقش + Migration 0004) در حال Commit است. بعدی: T06 (UsersRepository)، T07 (Seed — ۳ نقش)، T08 (جمع‌بندی). **Push/Tag فقط با اجازه مالک.**
 
 ## ۶. پرسش‌های باز و فرض‌ها (برای مالک)
 
 - (تصمیم مالک OWN-17، ۱۴۰۵/۰۸/۲۶) ریپو تا پایان پروژه PUBLIC می‌ماند؛ محافظت سبک روی main (منع Force Push و حذف) منتظر تایید جداگانه مالک.
-- (OD-37) مجوزهای نهایی نقش `CARRIER_ADMIN` تعیین نشده؛ فعلاً نقش فقط‌ورود است. در F1-05 در `docs/security/permission-matrix.md` مستند و Placeholder می‌شود.
-- (تصمیم مالک Q1 برنامه F1-03، ۱۴۰۵/۰۸/۲۹) نقش `PLATFORM_ADMIN` فقط به‌عنوان داده وجود دارد و به هیچ کاربر Tenant داده نمی‌شود. در v1 **تخصیص آن از طریق `user_roles` در DB غیرممکن است** (FK ترکیبی + CHECK؛ در T05 هم برای نقش Runtime و هم Owner تست شد). **ورود وب برای این نقش در v1 به تعویق افتاده** (مفهوم CLI/Seed هم تعویقیده است؛ فعلاً هیچ کاربر PLATFORM_ADMIN ساخته نمی‌شود). در F1-10 ورود فقط برای ۴ نقش تست می‌شود.
-- (ثبت T05 برنامه F1-03) نقش‌های با scope باربری (`CARRIER_ADMIN`/`CARRIER_OPERATOR`) برای اتصال واقعی به یک باربری به ستون `carrier_id` روی `users` نیاز دارند؛ این در **F1-08** (باربری‌ها) حل می‌شود. تا آن زمان این نقش‌ها فقط به‌عنوان داده وجود دارند.
+- (OD-37 — **بسته شد در T05b**، ۱۴۰۵/۰۸/۲۹) `CARRIER_ADMIN` تنها نقش باربری است و مسئولیت‌های `CARRIER_OPERATOR` را بر عهده گرفت؛ ماتریس مجوزهایش در F1-05 در `docs/security/permission-matrix.md` نوشته می‌شود.
+- (ثبت T05b برنامه F1-03) نقش `CARRIER_ADMIN` برای اتصال واقعی به یک باربری به ستون `carrier_id` روی `users` نیاز دارد؛ این در **F1-08** (باربری‌ها) حل می‌شود. تا آن زمان نقش فقط به‌عنوان داده وجود دارد.
 - (تصمیم مالک Q2/Q3 برنامه F1-03، ۱۴۰۵/۰۸/۲۹) موبایل مثل کد ملی رمزنگاری می‌شود. ستون‌های رمزنگاری‌شده کد ملی در F1-03 ساخته می‌شوند ولی **در این فاز هیچ داده‌ای در آن‌ها نوشته نمی‌شود** (مسیر نوشتن در F4 با پروفایل راننده).
 - UI صفحات داده پایه پنل اپراتور دقیقاً در کدام Task قرار می‌گیرد؟ فرض: داخل F1-09؛ در شروع F1-09 با مالک تایید می‌شود.
 
@@ -75,4 +76,4 @@
 
 ## ۹. وضعیت امنیت و بنچمارک (آخرین نتیجه + لینک گزارش)
 
-- ایزولاسیون Tenant (F1-02): سوئیت RLS **۱۴/۱۴ سبز** (۱۰ سناریو + اثبات نقش `bitabar_app` + تست leak + guard) و مرز ESLint D11 با تست اثبات — ۱۴۰۵/۰۸/۲۸. gitleaks: بدون نشتی (۱۴ Commit آخر). ممیزی امنیتی کامل و بنچمارک در فاز F7.
+- ایزولاسیون Tenant (F1-02 + F1-03 T05): سوئیت RLS **۲۵/۲۵ سبز** + مهاجرت ۷/۷ (کاتالوگ ۳ نقش، نام‌های فارسی بایت‌محور) — ۴۴ تست ادغام سبز، ۱۴۰۵/۰۸/۲۹. gitleaks: بدون نشتی. ممیزی امنیتی کامل و بنچمارک در فاز F7.

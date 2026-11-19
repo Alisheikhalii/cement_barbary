@@ -29,6 +29,13 @@
       "when": 1795091759670,
       "tag": "0003_users_roles_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795099070237,
+      "tag": "0004_role_catalog_trim",
+      "breakpoints": true
     }
   ]
 }

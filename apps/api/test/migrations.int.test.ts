@@ -15,14 +15,14 @@ describe('migrations (integration)', () => {
     const journal = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(journal.rows[0]?.n).toBe(4);
+    expect(journal.rows[0]?.n).toBe(5);
 
     // Second run: no error, no new journal rows.
     await expect(runMigrations(inject('ownerUrl'))).resolves.toBeUndefined();
     const again = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(again.rows[0]?.n).toBe(4);
+    expect(again.rows[0]?.n).toBe(5);
   });
 
   it('bitabar_app has no superuser, bypass-rls, create-role or login-via-git privileges', async () => {
@@ -61,17 +61,14 @@ describe('migrations (integration)', () => {
     ]);
   });
 
-  it('roles holds exactly the 6 catalog rows (ADR-006 U1), inserted by migration 0003', async () => {
+  it('roles holds exactly the 3 catalog rows (ADR-006 U1, trimmed by 0004 in T05b)', async () => {
     const result = await ownerPool().query<{ code: string; scope: string }>(
       'SELECT code, scope FROM roles ORDER BY code',
     );
     expect(result.rows).toEqual([
-      { code: 'AUDITOR', scope: 'tenant' },
       { code: 'CARRIER_ADMIN', scope: 'carrier' },
-      { code: 'CARRIER_OPERATOR', scope: 'carrier' },
       { code: 'DRIVER', scope: 'driver' },
       { code: 'FACTORY_OPERATOR', scope: 'tenant' },
-      { code: 'PLATFORM_ADMIN', scope: 'platform' },
     ]);
   });
 
@@ -81,20 +78,6 @@ describe('migrations (integration)', () => {
     // at the BYTE level (UTF-8 hex), not as text.
     const fa = (...codes: number[]) => String.fromCodePoint(...codes);
     const expected: Record<string, string> = {
-      // مدیر پلتفرم
-      PLATFORM_ADMIN: fa(
-        0x645,
-        0x62f,
-        0x6cc,
-        0x631,
-        0x20,
-        0x67e,
-        0x644,
-        0x62a,
-        0x641,
-        0x631,
-        0x645,
-      ),
       // اپراتور کارخانه
       FACTORY_OPERATOR: fa(
         0x627,
@@ -115,33 +98,14 @@ describe('migrations (integration)', () => {
       ),
       // مدیر باربری
       CARRIER_ADMIN: fa(0x645, 0x62f, 0x6cc, 0x631, 0x20, 0x628, 0x627, 0x631, 0x628, 0x631, 0x6cc),
-      // اپراتور باربری
-      CARRIER_OPERATOR: fa(
-        0x627,
-        0x67e,
-        0x631,
-        0x627,
-        0x62a,
-        0x648,
-        0x631,
-        0x20,
-        0x628,
-        0x627,
-        0x631,
-        0x628,
-        0x631,
-        0x6cc,
-      ),
       // راننده
       DRIVER: fa(0x631, 0x627, 0x646, 0x646, 0x62f, 0x647),
-      // بازرس
-      AUDITOR: fa(0x628, 0x627, 0x632, 0x631, 0x633),
     };
     const result = await ownerPool().query<{ code: string; name_fa: string; hex: string }>(
       `SELECT code, name_fa, encode(convert_to(name_fa, 'UTF8'), 'hex') AS hex
        FROM roles ORDER BY code`,
     );
-    expect(result.rows).toHaveLength(6);
+    expect(result.rows).toHaveLength(3);
     for (const row of result.rows) {
       const want = expected[row.code];
       expect(want, `unexpected role ${row.code}`).toBeDefined();
