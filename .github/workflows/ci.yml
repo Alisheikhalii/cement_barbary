@@ -43,6 +43,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Integration tests
+        run: pnpm test:int
+
+      - name: Migrations in sync
+        run: pnpm --filter @bitabar/api db:generate && git diff --exit-code -- apps/api/drizzle
+
       - name: Build
         run: pnpm build
 

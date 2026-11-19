@@ -9,5 +9,5 @@
     "sourceMap": false,
     "noEmit": true
   },
-  "include": ["src", "test", "vitest.config.ts", "drizzle.config.ts"]
+  "include": ["src", "test", "vitest.config.ts", "vitest.int.config.ts", "drizzle.config.ts"]
 }
