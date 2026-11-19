@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — F1-01 (اسکلت API) و F1-02 (دیتابیس/Drizzle/Migration/RLS/Tenant Context) کامل شدند (Commit محلی، **Push نشده**) | آخرین Tag: — | آخرین Commit: 0cea632
+- فاز فعلی: **F1** — F1-03 در حال انجام: T01 (ADR-006)، T02 (PII crypto)، T03+T04 (schema/Migration/RLS) کامل و Commit محلی شدند؛ T05 در انتظار بازبینی مالک | آخرین Tag: — | آخرین Commit: 0da92a6
 - CI: سبز (F0) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۲۹
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
@@ -32,6 +32,9 @@
 
 ## ۴. انجام‌شده (Changelog) ← جدیدترین بالا
 
+- [۱۴۰۵/۰۸/۲۹ | 0da92a6 | F1-03 T04] Migration سفارشی 0003: درج ۶ نقش (ON CONFLICT)، لغو INSERT/UPDATE/DELETE روی `roles`، الگوی RLS روی `users`/`user_roles`، لغو DELETE روی `users` (حذف نرم، U13). نام‌های فارسی نقش‌ها با تست بایت‌محور (hex) روی کانتینر تازه تایید شدند. `rls.md`: فهرست U14 + هشدار recreate.
+- [۱۴۰۵/۰۸/۲۹ | df4f8b5 | F1-03 T03] schemaهای `roles`/`users`/`user_roles` + Migration تولیدی 0002: FKهای ترکیبی (U4/U5/U6)، CHECKهای U12، indexهای یکتای partial per-tenant؛ اهداف FK به‌صورت UNIQUE constraint داخل CREATE TABLE (نه index) تا ترتیب Migration معتبر باشد.
+- [۱۴۰۵/۰۸/۲۹ | 47577a0 | F1-03 T02] سرویس PII: AES-256-GCM با AAD سه‌بخشی `tenant:column:row` (اعتبارسنجی Zod برای UUIDها)، Blind Index با HMAC جدا، نرمال‌سازی موبایل/کدملی (ارقام فارسی/عربی + checksum)، redaction ساختاری pino (مسیر اجدادی، چرخه → `'[Circular]'`)، اعتبارسنجی env برای `PII_ENC_KEY`/`PII_HMAC_KEY`/`PII_KEY_ID`. ۱۰۰ تست واحد؛ حلقه ۱۰ باره سبز.
 - [۱۴۰۵/۰۸/۲۹ | F1-03 T01] برنامه F1-03 با تایید مالک و تغییرات الزامی (a)–(g) پچ شد؛ ADR-006 (کاربران/نقش‌ها/PII، U1–U17) و `docs/security/pii.md` نوشته شد؛ تصمیمات Q1–Q3 مالک در §۶ ثبت شد.
 
 - [۱۴۰۵/۰۸/۲۸ | 2275734..0cea632 | F1-02 T01–T10] دیتابیس و ایزولاسیون Tenant: ADR-005؛ env دیتابیس با Zod؛ schema `tenants` (UUID v7، index یکتای partial، checkها) + Migrationهای 0000/0001 (نقش `bitabar_app` محدود: NOLOGIN/NOBYPASSRLS/NOSUPERUSER، DML-only، default privileges؛ توابع context با search_path سنجاق‌شده؛ RLS روی tenants با الگوی subselect)؛ Migration runner جدا (owner) + `infra/scripts/db-app-user.sh`؛ Testcontainers (PostgreSQL 17 واقعی) + CI (test:int + قفل هم‌گامی db:generate)؛ DatabaseModule + `/health/ready` واقعی؛ `TenantContext`/`TenantDb` (ALS، set_config تراکنسی پارامتری، reuse تودرتو، fail-closed، محافظ Proxy برای handle)؛ سوئیت RLS با ۱۴ تست (۱۰ سناریو + اثبات نقش + تست leak + guard «هر جدول tenant_id دارای RLS+policy است» با کنترل منفی)؛ قانون مرزی ESLint D11 + تست اثبات. نتیجه: ۴۱ تست واحد + ۳۰ تست ادغام سبز. بازبینی Opus در T04/T08/T09 انجام شد.
@@ -41,19 +44,21 @@
 
 ## ۵. در حال انجام / بعدی
 
-- F1-02 کامل و به‌صورت محلی Commit شده (Commit نهایی T10 در انتظار تایید بازبینی مالک). **Push/Tag فقط با اجازه مالک.**
-- بعدی: **F1-03** (کاربران و نقش‌ها + Seed) — با تایید مالک.
+- F1-03 در حال انجام: T01–T04 Commit محلی شدند (تا `0da92a6`). T05 (سوئیت ایزولاسیون users + guard سخت‌گیرانه U14) پیاده شد و در انتظار بازبینی مالک است؛ بعدی: T06 (UsersRepository)، T07 (Seed)، T08 (جمع‌بندی). **Push/Tag فقط با اجازه مالک.**
 
 ## ۶. پرسش‌های باز و فرض‌ها (برای مالک)
 
 - (تصمیم مالک OWN-17، ۱۴۰۵/۰۸/۲۶) ریپو تا پایان پروژه PUBLIC می‌ماند؛ محافظت سبک روی main (منع Force Push و حذف) منتظر تایید جداگانه مالک.
 - (OD-37) مجوزهای نهایی نقش `CARRIER_ADMIN` تعیین نشده؛ فعلاً نقش فقط‌ورود است. در F1-05 در `docs/security/permission-matrix.md` مستند و Placeholder می‌شود.
-- (تصمیم مالک Q1 برنامه F1-03، ۱۴۰۵/۰۸/۲۹) نقش `PLATFORM_ADMIN` فقط به‌عنوان داده وجود دارد و به هیچ کاربر Tenant داده نمی‌شود (CHECK + FK ترکیبی در DB). **ورود وب برای این نقش در v1 به تعویق افتاده**؛ کار پلتفرم (ساخت Tenant) فقط از طریق Migration owner با CLI/Seed انجام می‌شود. در F1-10 ورود فقط برای ۴ نقش تست می‌شود.
+- (تصمیم مالک Q1 برنامه F1-03، ۱۴۰۵/۰۸/۲۹) نقش `PLATFORM_ADMIN` فقط به‌عنوان داده وجود دارد و به هیچ کاربر Tenant داده نمی‌شود. در v1 **تخصیص آن از طریق `user_roles` در DB غیرممکن است** (FK ترکیبی + CHECK؛ در T05 هم برای نقش Runtime و هم Owner تست شد). **ورود وب برای این نقش در v1 به تعویق افتاده** (مفهوم CLI/Seed هم تعویقیده است؛ فعلاً هیچ کاربر PLATFORM_ADMIN ساخته نمی‌شود). در F1-10 ورود فقط برای ۴ نقش تست می‌شود.
+- (ثبت T05 برنامه F1-03) نقش‌های با scope باربری (`CARRIER_ADMIN`/`CARRIER_OPERATOR`) برای اتصال واقعی به یک باربری به ستون `carrier_id` روی `users` نیاز دارند؛ این در **F1-08** (باربری‌ها) حل می‌شود. تا آن زمان این نقش‌ها فقط به‌عنوان داده وجود دارند.
 - (تصمیم مالک Q2/Q3 برنامه F1-03، ۱۴۰۵/۰۸/۲۹) موبایل مثل کد ملی رمزنگاری می‌شود. ستون‌های رمزنگاری‌شده کد ملی در F1-03 ساخته می‌شوند ولی **در این فاز هیچ داده‌ای در آن‌ها نوشته نمی‌شود** (مسیر نوشتن در F4 با پروفایل راننده).
 - UI صفحات داده پایه پنل اپراتور دقیقاً در کدام Task قرار می‌گیرد؟ فرض: داخل F1-09؛ در شروع F1-09 با مالک تایید می‌شود.
 
 ## ۷. بدهی فنی و ریسک‌های شناخته‌شده
 
+- نگه‌داری Blind Index پس از حذف نرم (ثبت T05): مقدار `*_enc`/`*_hash` در سطر حذف‌نرم‌شده باقی می‌ماند و index یکتای partial هش را برای استفاده مجدد آزاد می‌کند؛ سیاست purge (مدت نگه‌داری PII رمزنگاری‌شده کاربران حذف‌شده) یک تصمیم باز محصولی/حقوقی است — یادداشت سیاست در `docs/security/pii.md` بخش Retention.
+- چرخش کلیدهای PII (چند key_version فعال) هنوز ساخته نشده؛ بایت `key_version` در header امکانش را می‌دهد (ADR-006 U10).
 - `pnpm audit` (۱۴۰۵/۰۸/۲۸): ۳ Moderate فقط در ابزار dev — esbuild ≤0.24.2 (از طریق drizzle-kit) و glob ≤14.0.1 (از طریق @nestjs/cli و testcontainers)؛ هیچ‌کدام در Runtime قرار نمی‌گیرند و `--audit-level=high` سبز است. picomatch ≤4.0.7 (High، فقط dev) همچنان با استثنای موقت ADR-004 پوشش داده می‌شود؛ بازبینی تا 2026-12-18.
 - دانلود از registry.npmjs.org روی این شبکه کند/ناپایدار است (retry).
 - **docker.io برای Pull جدید 403 می‌دهد** (شبکه ایران): راه‌حل = Pull از `docker.arvancloud.ir/<image>` سپس `docker tag` به نام اصلی (برای `testcontainers/ryuk:0.14.0` و `zricethezav/gitleaks:v8.28.0` انجام و کش شد).

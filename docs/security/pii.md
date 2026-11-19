@@ -57,6 +57,13 @@ Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('base
   URL (query strings are logged), an error message, or a log message string.
 - Display helpers: `maskPhone()` → `0912***0001`, `maskNationalId()` → `******1234`.
 
+## Retention after soft delete
+
+Soft-deleting a user keeps its `*_enc`/`*_hash` values in the row (nothing is
+wiped), while the partial unique indexes free the hash for reuse by a new row.
+A hard-delete/purge policy (how long encrypted PII of deleted users is kept)
+is an open product/legal decision — tracked as technical debt in AGENT.md §7.
+
 ## How to add a new encrypted field
 
 1. Normalize and validate the input in `security/pii/normalize.ts`.

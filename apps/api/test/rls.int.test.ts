@@ -8,7 +8,15 @@ import { DomainError } from '../src/common/errors/domain-error.js';
 import * as schema from '../src/db/schema/index.js';
 import { TenantContext } from '../src/db/tenant-context.js';
 import { TenantDb, type Tx } from '../src/db/tenant-db.js';
-import { createTenant, makeAppPool, ownerPool } from './setup/db.js';
+import {
+  assignRole,
+  createTenant,
+  createUser,
+  createUserWithPhoneHash,
+  makeAppPool,
+  ownerPool,
+  testPii,
+} from './setup/db.js';
 
 /**
  * The core proof of tenant isolation (ADR-005 D1/D4/D6). A throwaway table
@@ -27,6 +35,10 @@ describe('RLS isolation suite (runtime role)', () => {
   let tenantB: string;
   let probeA: string;
   let probeB: string;
+  let userA: string;
+  let userB: string;
+  let userADeletable: string;
+  let userASoftDelete: string;
 
   beforeAll(async () => {
     const owner = ownerPool();
@@ -52,6 +64,16 @@ describe('RLS isolation suite (runtime role)', () => {
       'INSERT INTO rls_probe (id, tenant_id, label) VALUES ($1, $2, $3), ($4, $5, $6)',
       [probeA, tenantA, 'row-a', probeB, tenantB, 'row-b'],
     );
+
+    // F1-03 fixtures: one user per tenant (phone via the real PII path,
+    // synthetic allowlisted numbers only, U17) plus role links.
+    userA = await createUser(owner, tenantA, { username: 'user.a', phone: '09120000001' });
+    userB = await createUser(owner, tenantB, { username: 'user.b', phone: '09120000002' });
+    userADeletable = await createUser(owner, tenantA, { phone: '09120000003' });
+    userASoftDelete = await createUser(owner, tenantA, { phone: '09120000004' });
+    await assignRole(owner, tenantA, userA, 'FACTORY_OPERATOR', 'tenant');
+    await assignRole(owner, tenantB, userB, 'AUDITOR', 'tenant');
+    await assignRole(owner, tenantA, userADeletable, 'AUDITOR', 'tenant');
 
     app = makeAppPool();
     tenantDb = new TenantDb(drizzle(app, { schema }));
@@ -278,45 +300,67 @@ describe('RLS isolation suite (runtime role)', () => {
     }
   });
 
-  it('guard — every public table with a tenant_id column has RLS enabled and at least one policy', async () => {
+  it('guard (U14) — every public table is tenant-owned with RLS or on the allowlist with a reason', async () => {
     // Runs as the schema owner (catalog query; RLS is irrelevant here).
-    // Exclusions: drizzle bookkeeping tables live in schema `drizzle`, outside
-    // this query's scope (nspname = 'public'); `tenants` itself has no
-    // tenant_id column and is covered by scenario 7 instead.
+    // The allowlist is explicit and every entry carries a written reason
+    // (change (f)); drizzle bookkeeping lives in schema `drizzle`, outside
+    // this query's scope.
+    const ALLOWLIST = new Map([
+      ['tenants', 'platform-owned tenant registry; the row IS the tenant (RLS on id, F1-02)'],
+      ['roles', 'global read-only role catalog; bitabar_app has SELECT only (ADR-006 U1)'],
+    ]);
+    for (const [table, reason] of ALLOWLIST) {
+      expect(reason.length, `allowlist entry ${table} needs a written reason`).toBeGreaterThan(0);
+    }
+
     const GUARD_SQL = `
       SELECT c.relname AS table_name,
              c.relrowsecurity AS rls_enabled,
+             EXISTS (SELECT 1 FROM pg_attribute a
+                      WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
+                        AND NOT a.attisdropped) AS has_tenant_id,
              (SELECT count(*)::int FROM pg_policies p
                WHERE p.schemaname = 'public' AND p.tablename = c.relname) AS policy_count
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind = 'r'
-        AND EXISTS (SELECT 1 FROM pg_attribute a
-                     WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped)
     `;
     interface GuardRow {
       table_name: string;
       rls_enabled: boolean;
+      has_tenant_id: boolean;
       policy_count: number;
     }
+    const violations = (rows: GuardRow[]) =>
+      rows
+        .filter((r) => !ALLOWLIST.has(r.table_name))
+        .filter((r) => !(r.has_tenant_id && r.rls_enabled && r.policy_count >= 1))
+        .map((r) => r.table_name);
     const owner = ownerPool();
 
-    // Negative control: a tenant_id table WITHOUT RLS must be flagged,
-    // proving the guard is not vacuous.
+    // Negative controls: a tenant_id table WITHOUT RLS, and a table with NO
+    // tenant_id that is not allowlisted — both must be flagged, proving the
+    // guard is not vacuous.
     await owner.query('CREATE TABLE rls_guard_negative (id uuid, tenant_id uuid)');
-    const flagged = (await owner.query(GUARD_SQL)).rows as GuardRow[];
-    const negative = flagged.find((r) => r.table_name === 'rls_guard_negative');
-    expect(negative).toMatchObject({ rls_enabled: false, policy_count: 0 });
+    await owner.query('CREATE TABLE rls_guard_stray (id uuid)');
+    const flagged = violations((await owner.query(GUARD_SQL)).rows as GuardRow[]);
+    expect(flagged).toContain('rls_guard_negative');
+    expect(flagged).toContain('rls_guard_stray');
     await owner.query('DROP TABLE rls_guard_negative');
+    await owner.query('DROP TABLE rls_guard_stray');
 
-    // Positive: every remaining tenant-owned table (incl. rls_probe) complies.
+    // Positive: with the controls gone, nothing violates; the allowlist is
+    // exactly the set of public tables without tenant_id (no more, no less).
     const rows = (await owner.query(GUARD_SQL)).rows as GuardRow[];
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.map((r) => r.table_name)).toContain('rls_probe');
-    for (const row of rows) {
-      expect(row.rls_enabled).toBe(true);
-      expect(row.policy_count).toBeGreaterThanOrEqual(1);
-    }
+    expect(violations(rows)).toEqual([]);
+    expect(
+      rows
+        .filter((r) => !r.has_tenant_id)
+        .map((r) => r.table_name)
+        .sort(),
+    ).toEqual([...ALLOWLIST.keys()].sort());
   });
 
   it('extra — a tx handle kept after run() finished cannot read tenant data', async () => {
@@ -344,5 +388,260 @@ describe('RLS isolation suite (runtime role)', () => {
       expect(rows).toEqual([]);
     }
     expect(rows ?? []).toHaveLength(0);
+  });
+
+  // ---------- F1-03 T05: users / user_roles / roles (ADR-006) ----------
+
+  it('users + user_roles — no context returns 0 rows from both (fail closed)', async () => {
+    const users = await app.query('select id from users');
+    const links = await app.query('select user_id from user_roles');
+    expect(users.rows).toHaveLength(0);
+    expect(links.rows).toHaveLength(0);
+  });
+
+  it('users — context A sees only A’s users; B’s id and B’s phone_hash return 0 rows (IDOR)', async () => {
+    const bHash = (
+      await ownerPool().query<{ phone_hash: Buffer }>(
+        'select phone_hash from users where id = $1',
+        [userB],
+      )
+    ).rows[0]?.phone_hash as Buffer;
+
+    await inTenant(tenantA, async (tx) => {
+      const visible = await tx.execute(sql`select id, tenant_id from users`);
+      const rows = visible.rows as { id: string; tenant_id: string }[];
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.map((r) => r.id)).toContain(userA);
+      expect(rows.map((r) => r.id)).not.toContain(userB);
+      expect(rows.every((r) => r.tenant_id === tenantA)).toBe(true);
+
+      const byId = await tx.execute(sql`select id from users where id = ${userB}`);
+      expect(byId.rows).toHaveLength(0);
+
+      const byHash = await tx.execute(sql`select id from users where phone_hash = ${bHash}`);
+      expect(byHash.rows).toHaveLength(0);
+    });
+  });
+
+  it('users — context A cannot insert for tenant B nor re-home a row to B (42501)', async () => {
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into users (id, tenant_id, display_name, username)
+              values (${uuidv7()}, ${tenantB}, 'Evil', 'evil.user')`,
+        );
+      }),
+      '42501',
+    );
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(sql`update users set tenant_id = ${tenantB} where id = ${userA}`);
+      }),
+      '42501',
+    );
+  });
+
+  it('users — context A: updating B’s row affects 0 rows and B stays intact', async () => {
+    const updated = await inTenant(tenantA, async (tx) => {
+      const res = await tx.execute(sql`update users set display_name = 'evil' where id = ${userB}`);
+      return res.rowCount;
+    });
+    expect(updated).toBe(0);
+    const check = await ownerPool().query('select display_name from users where id = $1', [userB]);
+    expect((check.rows[0] as { display_name: string }).display_name).toBe('Test User');
+  });
+
+  it('users — hard DELETE is denied even in own tenant (U13); soft delete via UPDATE works', async () => {
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(sql`delete from users where id = ${userASoftDelete}`);
+      }),
+      '42501',
+    );
+    const updated = await inTenant(tenantA, async (tx) => {
+      const res = await tx.execute(
+        sql`update users set deleted_at = now() where id = ${userASoftDelete}`,
+      );
+      return res.rowCount;
+    });
+    expect(updated).toBe(1);
+    const check = await ownerPool().query('select deleted_at from users where id = $1', [
+      userASoftDelete,
+    ]);
+    expect((check.rows[0] as { deleted_at: Date | null }).deleted_at).not.toBeNull();
+  });
+
+  it('user_roles — context A sees only A’s links; deleting B’s link affects 0 rows; own delete works', async () => {
+    await inTenant(tenantA, async (tx) => {
+      const visible = await tx.execute(sql`select tenant_id, user_id, role_code from user_roles`);
+      const rows = visible.rows as { tenant_id: string; user_id: string; role_code: string }[];
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((r) => r.tenant_id === tenantA)).toBe(true);
+      expect(rows.map((r) => r.user_id)).not.toContain(userB);
+
+      const denied = await tx.execute(sql`delete from user_roles where user_id = ${userB}`);
+      expect(denied.rowCount).toBe(0);
+
+      const own = await tx.execute(
+        sql`delete from user_roles where user_id = ${userADeletable} and role_code = 'AUDITOR'`,
+      );
+      expect(own.rowCount).toBe(1);
+    });
+    const check = await ownerPool().query(
+      'select count(*)::int as n from user_roles where user_id = $1',
+      [userB],
+    );
+    expect(check.rows[0]?.n).toBe(1);
+  });
+
+  it('user_roles — cross-tenant link, platform role, forged scope and RLS write-check are all rejected', async () => {
+    // (a) Link to B's user from tenant A: WITH CHECK passes (tenant A) but the
+    // composite FK (tenant_id, user_id) -> users has no such pair → 23503.
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
+              values (${tenantA}, ${userB}, 'AUDITOR', 'tenant')`,
+        );
+      }),
+      '23503',
+    );
+    // (b) PLATFORM_ADMIN: the pair exists in roles, so the FK passes and the
+    // CHECK (role_scope <> 'platform') fires → 23514 — as the app AND as the
+    // owner (U4 holds even for the role that bypasses RLS).
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
+              values (${tenantA}, ${userA}, 'PLATFORM_ADMIN', 'platform')`,
+        );
+      }),
+      '23514',
+    );
+    await expectPgRejection(
+      ownerPool().query(
+        `insert into user_roles (tenant_id, user_id, role_code, role_scope)
+         values ($1, $2, 'PLATFORM_ADMIN', 'platform')`,
+        [tenantA, userA],
+      ),
+      '23514',
+    );
+    // (c) Forged scope for a real role: ('AUDITOR','carrier') is not in roles
+    // → composite FK violation 23503. The scope cannot lie. (AUDITOR is used
+    // because userA holds no AUDITOR link — a held role would hit the PK
+    // first and prove nothing about the FK.)
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
+              values (${tenantA}, ${userA}, 'AUDITOR', 'carrier')`,
+        );
+      }),
+      '23503',
+    );
+    // (d) A link row carrying tenant B's id, inserted from context A → RLS
+    // WITH CHECK rejects it → 42501.
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
+              values (${tenantB}, ${userB}, 'AUDITOR', 'tenant')`,
+        );
+      }),
+      '42501',
+    );
+  });
+
+  it('roles — globally readable; INSERT/UPDATE/DELETE denied for the runtime role', async () => {
+    const listed = await app.query('select code from roles');
+    expect(listed.rows).toHaveLength(6);
+    await expect(
+      app.query(`insert into roles (code, name_fa, scope) values ('X', 'x', 'tenant')`),
+    ).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      app.query(`update roles set description = 'x' where code = 'DRIVER'`),
+    ).rejects.toMatchObject({ code: '42501' });
+    await expect(app.query(`delete from roles where code = 'DRIVER'`)).rejects.toMatchObject({
+      code: '42501',
+    });
+  });
+
+  it('users — phone_hash uniqueness is per tenant, never global; reusable after soft delete', async () => {
+    const owner = ownerPool();
+    // Same hash bytes in two tenants: allowed (change (d) — per-tenant index).
+    const sharedHash = Buffer.alloc(32, 7);
+    const firstA = await createUserWithPhoneHash(owner, tenantA, sharedHash);
+    await createUserWithPhoneHash(owner, tenantB, sharedHash);
+
+    // Same hash again inside tenant A: rejected (23505) — as the runtime role.
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into users (id, tenant_id, display_name, phone_enc, phone_hash)
+              values (${uuidv7()}, ${tenantA}, 'Dup', ${Buffer.from([9])}, ${sharedHash})`,
+        );
+      }),
+      '23505',
+    );
+
+    // After soft-deleting the first row, the hash is free again in tenant A
+    // (partial unique index WHERE deleted_at IS NULL).
+    await owner.query('update users set deleted_at = now() where id = $1', [firstA]);
+    await inTenant(tenantA, async (tx) => {
+      const res = await tx.execute(
+        sql`insert into users (id, tenant_id, display_name, phone_enc, phone_hash)
+            values (${uuidv7()}, ${tenantA}, 'Reused', ${Buffer.from([9])}, ${sharedHash})`,
+      );
+      expect(res.rowCount).toBe(1);
+    });
+
+    // U8 end-to-end: the same phone yields different blind-index hashes in A and B.
+    const hA = testPii().blindIndex('phone', tenantA, '09120000009');
+    const hB = testPii().blindIndex('phone', tenantB, '09120000009');
+    expect(hA.equals(hB)).toBe(false);
+  });
+
+  it('users — U12 CHECKs reject bad rows (login present, enc/hash pairs)', async () => {
+    // No username and no phone_hash → users_login_present.
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into users (id, tenant_id, display_name)
+              values (${uuidv7()}, ${tenantA}, 'No Login')`,
+        );
+      }),
+      '23514',
+    );
+    // phone_hash without phone_enc → users_phone_pair.
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into users (id, tenant_id, display_name, phone_hash)
+              values (${uuidv7()}, ${tenantA}, 'Half Pair', ${Buffer.alloc(32, 8)})`,
+        );
+      }),
+      '23514',
+    );
+    // national_id_hash without national_id_enc → users_national_id_pair
+    // (username present so only the pair CHECK can fire).
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into users (id, tenant_id, display_name, username, national_id_hash)
+              values (${uuidv7()}, ${tenantA}, 'Half Pair 2', 'half.pair', ${Buffer.alloc(32, 10)})`,
+        );
+      }),
+      '23514',
+    );
+  });
+
+  it('users — national-ID columns stay NULL for every row (owner Q3; no write path exists in F1-03)', async () => {
+    // The rejected CHECK attempts above prove violations are blocked; this
+    // proves nothing — fixture or code — ever wrote a national ID. T07
+    // re-asserts this after the dev seed runs.
+    const res = await ownerPool().query<{ n: number }>(
+      'select count(*)::int as n from users where national_id_enc is not null or national_id_hash is not null',
+    );
+    expect(res.rows[0]?.n).toBe(0);
   });
 });

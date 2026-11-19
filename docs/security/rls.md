@@ -60,3 +60,9 @@ Special write rules:
 
 Any new table must either carry `tenant_id` + this template or be added to the
 allowlist above with a reason — otherwise the guard test fails.
+
+> **Table recreation warning:** REVOKEs, RLS and policies do NOT survive a
+> drop/recreate — `ALTER DEFAULT PRIVILEGES` would silently re-grant full DML
+> (including DELETE on `users`). Any migration that recreates `users`,
+> `user_roles` or `roles` must re-apply 0003's REVOKE/ENABLE/policy statements.
+> The privilege-matrix test and the U14 guard fail CI if this is forgotten.
