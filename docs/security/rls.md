@@ -40,3 +40,23 @@ only to run migrations, and the app never connects as owner.
 Grants for new tables come from `ALTER DEFAULT PRIVILEGES` (set in migration
 `0001_rls_foundation`), so no extra `GRANT` statements are needed as long as
 migrations run as the schema owner.
+
+## Table inventory and the U14 allowlist
+
+Global tables (no `tenant_id`, each with a written reason — ADR-006 U14):
+
+- `tenants` — platform-owned tenant registry; the row IS the tenant, RLS
+  compares `id` to the context (F1-02).
+- `roles` — global read-only role catalog; `bitabar_app` has SELECT only
+  (INSERT/UPDATE/DELETE revoked in `0003_users_roles_rls`).
+
+Tenant-owned (template above): `users`, `user_roles`.
+
+Special write rules:
+
+- `users` is **soft-delete only** (ADR-006 U13): DELETE is revoked from
+  `bitabar_app`; the app sets `deleted_at`. `user_roles` keeps DELETE (role
+  revocation).
+
+Any new table must either carry `tenant_id` + this template or be added to the
+allowlist above with a reason — otherwise the guard test fails.
