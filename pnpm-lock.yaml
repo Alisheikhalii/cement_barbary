@@ -123,6 +123,9 @@ importers:
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
+      eslint:
+        specifier: ^10.15.0
+        version: 10.15.0(jiti@2.7.0)
       supertest:
         specifier: ^7.0.0
         version: 7.3.2
