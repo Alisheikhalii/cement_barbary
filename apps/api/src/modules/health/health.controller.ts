@@ -1,10 +1,13 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { Public } from '../../common/auth/public.decorator.js';
+
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import required: emitDecoratorMetadata emits DbHealth as the constructor param type for DI
 import { DbHealth } from '../../db/db-health.js';
 
 @ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly dbHealth: DbHealth) {}

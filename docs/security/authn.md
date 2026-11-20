@@ -32,7 +32,10 @@ without changing the login flow, tokens, sessions or tables (plan §J).
   on weaker settings. Stored hashes declaring more than 4 × the configured parameters (or any
   malformed PHC) are rejected **before** Argon2 runs — no DoS via tampered stored hashes.
 - Policy: staff 12–128 characters; drivers a numeric PIN of 8–20 digits plus a common-PIN
-  blocklist; never equal to the identifier; dual-role accounts follow the staff rule.
+  blocklist; never equal to the login identifier — checked against **every** form of it (the bare
+  username, `username@tenant-code`, the normalized phone, and every alias of that phone such as
+  `912…`, `98912…`, `+98…` or spaced digits); dual-role and role-less accounts follow the staff
+  rule.
 - First passwords are **operator-set one-time passwords**: short expiry
   (`temporary_password_expires_at`, `AUTH_TEMP_PASSWORD_TTL_HOURS`, default 24 h), single use,
   hash-only, delivered out-of-band (CLI hidden prompt / stdout once). Login with
@@ -52,9 +55,15 @@ without changing the login flow, tokens, sessions or tables (plan §J).
 
 Cookie flags: `HttpOnly` always; `Secure` always except local dev over plain http; `SameSite=Lax`
 (Lax already blocks cross-site POSTs to the POST-only cookie endpoints); `Path=/api/v1/auth`
-(the auth routes sit under the global prefix) + Origin/`Sec-Fetch-Site` check on cookie endpoints
-(CSRF). On rotation the cookie's Max-Age must be the session's **remaining** lifetime, not a fresh
-30 days (`refreshCookieMaxAgeSeconds`).
+(the auth routes sit under the global prefix). On rotation the cookie's Max-Age is the session's
+**remaining** lifetime, not a fresh 30 days (`refreshCookieMaxAgeSeconds`).
+
+**CSRF (refresh + logout).** A custom header `X-Bitabar-CSRF: 1` is required — browsers cannot set
+a custom header cross-origin without a preflighted CORS grant, and the CORS allowlist is ours.
+When the browser sends `Origin`, it must match the configured allowlist exactly; with no `Origin`,
+a present `Sec-Fetch-Site` must be `same-origin`. The check runs in a guard BEFORE the handler
+touches the cookie, so a valid and an invalid cookie answer the same 403; rejections never set or
+clear a cookie. Logout with a rotated-out token follows the reuse rule.
 
 Rotation is one conditional `UPDATE … WHERE refresh_hash = <old> AND revoked_at IS NULL AND
 expires_at > now()`: PostgreSQL's row lock makes exactly one of any number of simultaneous
@@ -65,20 +74,51 @@ for unknown/malformed tokens — it never becomes an oracle.
 
 ## Rate limits (all env config)
 
-| Bucket          | Key                            | Default | Answer on overflow      |
-| --------------- | ------------------------------ | ------- | ----------------------- |
-| Per account     | A2 progressive delay           | 1 s ×2ⁿ | generic 401 (never 429) |
-| Per IP          | `AUTH_RL_LOGIN_IP_PER_MIN`     | 20/min  | `429` + `Retry-After`   |
-| Per tenant-code | `AUTH_RL_LOGIN_TENANT_PER_MIN` | 60/min  | `429` + `Retry-After`   |
+| Bucket          | Key                             | Default | Answer on overflow      |
+| --------------- | ------------------------------- | ------- | ----------------------- |
+| Per account     | A2 progressive delay            | 1 s ×2ⁿ | generic 401 (never 429) |
+| Per identifier  | `AUTH_RL_LOGIN_ACCOUNT_PER_MIN` | 10/min  | `429` + `Retry-After`   |
+| Per IP          | `AUTH_RL_LOGIN_IP_PER_MIN`      | 20/min  | `429` + `Retry-After`   |
+| Per tenant-code | `AUTH_RL_LOGIN_TENANT_PER_MIN`  | 60/min  | `429` + `Retry-After`   |
 
 Storage: Postgres `auth_rate_limits` behind a `RateLimiter` interface (fixed window, atomic
 upsert, lazy + hourly TTL cleanup). A Redis implementation can replace it without caller changes.
+**Key hygiene:** the IP bucket key holds the client IP (a counter dimension, not an account);
+account and tenant-code keys are HMAC-SHA256 of the identifier (domain-separated `PII_HMAC_KEY`), so
+the persisted row never contains a raw phone, username or tenant code. Unknown identifiers consume
+exactly the same buckets as known ones, so a 429 cannot reveal existence.
+
+**Deployment constraint (F8).** Express `trust proxy` stays **off** by default — a client-sent
+`X-Forwarded-For` never changes `request.ip` (unit test `trust-proxy.test.ts`). In production,
+behind Nginx, it must be enabled **explicitly for the internal proxy hop only** (`app.set('trust
+proxy', 1)`, never `true`): otherwise every request carries Nginx's address and the per-IP limit
+becomes one shared bucket that throttles all drivers together. `request.ip` must resolve to the
+real client IP — verify with a request carrying a known `X-Forwarded-For` through the proxy.
+Enabling `true` (trust every hop) instead lets anyone forge the header and evade the limit; the
+application itself must not set it from env without this review.
+
+The progressive delay write (`user_credentials.failed_attempts`/`next_attempt_at`) runs with
+`SET LOCAL synchronous_commit = off` — best-effort anti-brute-force state — and every failure path
+that must NOT write a counter (unknown tenant/user/phone, delayed account, expired temp password,
+correct password on a disabled account) performs the same no-op bookkeeping transaction. Response
+timing therefore does not depend on whether the account exists (A3).
 
 ## Endpoints
 
-`POST /auth/login` · `POST /auth/refresh` (cookie) · `POST /auth/logout` (cookie) ·
-`POST /auth/password/change` · `GET /auth/me` (Bearer). Authentication guard only — permissions
-are F1-05.
+`POST /api/v1/auth/login` · `POST /api/v1/auth/refresh` (cookie + CSRF) ·
+`POST /api/v1/auth/logout` (cookie + CSRF) · `POST /api/v1/auth/password/change` (change token or
+Bearer + current password) · `GET /api/v1/auth/me` (Bearer).
+
+A global authentication guard makes everything **deny by default**; only `@Public()` routes are
+reachable without a bearer access token (health, and the four auth routes that authenticate
+themselves). Access tokens travel in the JSON body; the refresh token exists only in the cookie.
+`must_change_password` returns only a 5-minute change token (audience `bitabar-api:password-change`)
+with no session and no cookie; the token carries a fingerprint of the current stored hash, so a
+password change or an operator reset invalidates it and a concurrent double-submit applies at most
+once (compare-and-swap). A change re-checks that the account and tenant are still active, is
+throttled with the same per-account window as login, revokes every session, then opens one fresh
+session. Login accepts only `application/json` — a cross-site HTML form cannot authenticate the
+victim or plant a cookie (login-CSRF). Authentication guard only — permissions are F1-05.
 
 ## Tables and RLS
 

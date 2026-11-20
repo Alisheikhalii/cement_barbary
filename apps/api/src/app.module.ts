@@ -8,6 +8,7 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter.js
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './db/database.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PiiModule } from './security/pii/pii.module.js';
@@ -34,6 +35,7 @@ import { redactPiiLogObject } from './security/pii/log-redact.js';
     HealthModule,
     PiiModule,
     UsersModule,
+    AuthModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
