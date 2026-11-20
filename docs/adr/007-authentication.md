@@ -36,7 +36,11 @@ folded into A1–A3, A7, A8, A11, A17 and A19 below. Full plan: `docs/plan/F1-04
   `username@tenant-code`, resolved server-side; the driver phone fans out server-side over a 60
   s-cached tenant list with per-tenant blind-index HMACs (ADR-006 U8 unchanged), one DB round trip.
 - **A5 — Driver login = phone + password;** a phone present in several tenants is verified against
-  each match, and delay counters advance on every matched row.
+  each match, and delay counters advance on every matched row. _Accepted risk (T09 review L1):_ the
+  fan-out costs one real Argon2 verify per matched row, so a phone registered in two tenants is
+  measurably slower than one registered in zero or one. This leaks tenancy multiplicity (bounded by
+  the 10/min per-account window), never whether an account exists. Revisit if F7 timing numbers
+  require padding to a fixed verify count.
 - **A6 — Pluggable `CredentialMethod` interface:** `verify(input) → identity { tenantId, userId,
 roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan §J) with no
   changes to the login flow, token/session code or the F1-04 tables.

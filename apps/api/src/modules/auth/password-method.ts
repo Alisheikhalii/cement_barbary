@@ -70,7 +70,12 @@ export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
    * commit cost is paid, so response timing does not reveal account state.
    */
   private async dummyFailureWrite(): Promise<void> {
-    await this.failures.record(randomUUID(), randomUUID(), 1, new Date());
+    await this.failures.record(
+      randomUUID(),
+      randomUUID(),
+      this.config.auth.loginDelay.baseSeconds,
+      this.config.auth.loginDelay.maxSeconds,
+    );
   }
 
   private async verifyStaff(identifier: string, password: string): Promise<CredentialVerifyResult> {
@@ -156,7 +161,7 @@ export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
     const matches = await this.passwords.verify(row.passwordHash, password);
     if (!matches) {
       if (row.status === 'active') {
-        await this.registerFailure(row, now);
+        await this.registerFailure(row);
       } else {
         // Disabled + wrong password: no counter may advance, but the path still
         // pays the same bookkeeping transaction as an active failure (A3).
@@ -180,15 +185,17 @@ export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
     return { ok: true, identity };
   }
 
-  /** A2: delay = base × 2^(n-1), capped; n is the post-increment failure count. */
-  private async registerFailure(row: AuthLookupRow, now: number): Promise<void> {
-    const failures = row.failedAttempts + 1;
-    const delaySeconds = Math.min(
-      this.config.auth.loginDelay.baseSeconds * 2 ** Math.min(failures - 1, 30),
+  /**
+   * A2: the store increments the counter and computes base × 2^(n-1) in one
+   * atomic UPDATE, so concurrent failures escalate correctly.
+   */
+  private async registerFailure(row: AuthLookupRow): Promise<void> {
+    await this.failures.record(
+      row.tenantId,
+      row.userId,
+      this.config.auth.loginDelay.baseSeconds,
       this.config.auth.loginDelay.maxSeconds,
     );
-    const nextAttemptAt = new Date(now + delaySeconds * 1000);
-    await this.failures.record(row.tenantId, row.userId, failures, nextAttemptAt);
   }
 
   private async resetFailures(row: AuthLookupRow): Promise<void> {

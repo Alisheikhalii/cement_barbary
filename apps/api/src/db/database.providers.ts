@@ -4,7 +4,11 @@ import { Pool } from 'pg';
 
 import { APP_CONFIG } from '../config/config.module.js';
 import type { AppConfig } from '../config/env.js';
+import { RuntimeRoleCheck } from './runtime-role.check.js';
 import * as schema from './schema/index.js';
+import { DB, PG_POOL } from './tokens.js';
+
+export { DB, PG_POOL } from './tokens.js';
 
 /**
  * The single pool + Drizzle instance for the whole app (ADR-005 D10/D11).
@@ -12,8 +16,6 @@ import * as schema from './schema/index.js';
  * boots even if the DB is briefly down; /health/ready reports the outage.
  * Raw access tokens stay inside src/db/** (enforced by lint, T09).
  */
-export const PG_POOL = Symbol('PG_POOL');
-export const DB = Symbol('DB');
 export type Db = NodePgDatabase<typeof schema>;
 
 export const pgPoolProvider: Provider = {
@@ -44,4 +46,9 @@ export class PoolLifecycle implements OnApplicationShutdown {
   }
 }
 
-export const databaseProviders: Provider[] = [pgPoolProvider, dbProvider, PoolLifecycle];
+export const databaseProviders: Provider[] = [
+  pgPoolProvider,
+  dbProvider,
+  PoolLifecycle,
+  RuntimeRoleCheck,
+];

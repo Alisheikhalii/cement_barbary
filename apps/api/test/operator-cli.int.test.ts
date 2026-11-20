@@ -110,6 +110,21 @@ describe('operator CLI (T08)', () => {
     );
     expect(unsetCode).toBe(2);
     expect(unset.out).toEqual([]);
+
+    // A stray `development` on a host pointing at a remote database is refused.
+    const remote = capture();
+    const remoteCode = await runCreateUser(
+      ['--tenant', 'prod', '--username', 'prod.user', '--display-name', 'Prod'],
+      {
+        io: remote.io,
+        env: cliEnv({
+          NODE_ENV: 'development',
+          DATABASE_URL: 'postgres://db.internal.example:5432/bitabar',
+        }),
+      },
+    );
+    expect(remoteCode).toBe(2);
+    expect(remote.out).toEqual([]);
   });
 
   it('refuses reset-password outside development/test and never echoes bare values', async () => {
@@ -212,7 +227,9 @@ describe('operator CLI (T08)', () => {
     await createTenant(owner, code);
     // Built at runtime from the gitleaks-allowlisted synthetic prefix, so no
     // out-of-range phone literal exists in the source.
-    const phone = `0912000000${randomInt(1, 10)}`;
+    // 05–08 are unused by the other suites, so the driver fan-out cannot hit a
+    // delayed row in another tenant (which would answer the generic 401).
+    const phone = `0912000000${randomInt(5, 9)}`;
     const captureOut = capture();
 
     const exitCode = await runCreateUser(

@@ -120,13 +120,30 @@ function usageError(ctx: CliContext, lines: readonly string[]): number {
   return 2;
 }
 
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+function isLocalDatabaseUrl(url: string | undefined): boolean {
+  if (url === undefined) {
+    return false;
+  }
+  try {
+    return LOCAL_DB_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 function productionRefused(argv: string[], ctx: CliContext): boolean {
   const env = ctx.env.NODE_ENV;
-  const developmentLike = env === 'development' || env === 'test';
-  // Unset is refused too: a production host with no NODE_ENV (or a stray
-  // `development`) must not silently write to the live database.
+  // Flag-free operation requires BOTH a development/test NODE_ENV AND a local
+  // database. A stray `development` copied onto a production host (remote
+  // DATABASE_URL) is refused, mirroring assertDevSeedAllowed (review L3).
+  const developmentLike =
+    (env === 'development' || env === 'test') && isLocalDatabaseUrl(ctx.env.DATABASE_URL);
   if (!developmentLike && !argv.includes(PRODUCTION_FLAG)) {
-    ctx.io.err('refused: running outside development/test requires --allow-production');
+    ctx.io.err(
+      'refused: running outside a local development/test database requires --allow-production',
+    );
     return true;
   }
   return false;

@@ -21,14 +21,17 @@ export class CredentialFailureStore {
   constructor(@Inject(DB) private readonly db: Db) {}
 
   /**
-   * Records one failure. A random tenant/user (the dummy path) matches zero
-   * rows and still pays the same transaction shape.
+   * Records one failure atomically: `failed_attempts = failed_attempts + 1`
+   * and the delay `base × 2^(n-1)` (capped) are computed in the same UPDATE,
+   * so parallel wrong guesses can never overwrite each other with a stale
+   * count (phase review L2). A random tenant/user (the dummy path) matches
+   * zero rows and still pays the same transaction shape.
    */
   async record(
     tenantId: string,
     userId: string,
-    failedAttempts: number,
-    nextAttemptAt: Date,
+    baseSeconds: number,
+    maxSeconds: number,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
@@ -36,8 +39,13 @@ export class CredentialFailureStore {
       await tx.execute(sql`set local synchronous_commit = off`);
       await tx.execute(sql`
         UPDATE user_credentials
-        SET failed_attempts = ${failedAttempts},
-            next_attempt_at = ${nextAttemptAt},
+        SET failed_attempts = failed_attempts + 1,
+            next_attempt_at = now() + (
+              LEAST(
+                ${maxSeconds}::double precision,
+                ${baseSeconds}::double precision * power(2, LEAST(failed_attempts, 30))
+              ) * interval '1 second'
+            ),
             updated_at = now()
         WHERE tenant_id = ${tenantId} AND user_id = ${userId}
       `);

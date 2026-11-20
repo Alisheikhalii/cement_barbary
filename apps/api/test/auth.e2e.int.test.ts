@@ -690,11 +690,26 @@ describe('auth HTTP endpoints (T07)', () => {
     expect(await liveSessions(a18Disabled)).toBe(0);
     await owner.query(`UPDATE users SET status = 'active' WHERE id = $1`, [a18Disabled]);
 
+    // Two sessions, neither refreshed during the suspension: the trigger must
+    // revoke the DORMANT one too, so reactivation cannot revive it (R1).
     const tenantBLogin = await login(`operator.b@${codeB}`, STAFF_PW);
     const tenantBCookie = refreshCookieHeader(tenantBLogin);
+    const tenantBLogin2 = await login(`operator.b@${codeB}`, STAFF_PW);
+    const tenantBCookie2 = refreshCookieHeader(tenantBLogin2);
+    const tenantBUser = await owner.query<{ id: string }>(
+      `SELECT id FROM users WHERE tenant_id = $1 AND username = 'operator.b'`,
+      [tenantB],
+    );
+    const tenantBUserId = tenantBUser.rows[0]?.id;
+    if (tenantBUserId === undefined) {
+      throw new Error('tenant B operator fixture missing');
+    }
+    expect(await liveSessions(tenantBUserId)).toBe(2);
     await owner.query(`UPDATE tenants SET status = 'suspended' WHERE id = $1`, [tenantB]);
-    await refresh(tenantBCookie).expect(401);
+    expect(await liveSessions(tenantBUserId)).toBe(0);
     await owner.query(`UPDATE tenants SET status = 'active' WHERE id = $1`, [tenantB]);
+    await refresh(tenantBCookie).expect(401);
+    await refresh(tenantBCookie2).expect(401);
 
     const deletedLogin = await login(`a18.deleted@${codeA}`, STAFF_PW);
     const deletedCookie = refreshCookieHeader(deletedLogin);

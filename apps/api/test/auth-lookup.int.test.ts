@@ -118,7 +118,8 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
        VALUES ($1, $2, $3, $1, $4, now(), now() + interval '30 days')`,
       [uuidv7(), tenantA, staffA, revokedRefreshHash],
     );
-    // A suspended tenant's session must resolve to the same empty answer.
+    // A suspended tenant's session is still resolvable by the opaque cookie so
+    // the refresh flow can revoke it (0008, review M1).
     const suspUser = await createUser(owner, suspendedTenant, { username: 'susp.user' });
     await owner.query(
       `INSERT INTO auth_sessions
@@ -585,8 +586,11 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
     await expect(authLookupSession(db(), Buffer.alloc(0))).resolves.toBeNull();
   });
 
-  it('session lookup: suspended tenant → empty; revoked session → returned with revoked_at', async () => {
-    await expect(authLookupSession(db(), suspendedRefreshHash)).resolves.toBeNull();
+  it('session lookup resolves suspended-tenant sessions so A18 can revoke them', async () => {
+    // 0008: the tenant status is enforced in SessionService.rotate(), not here;
+    // returning the row is what lets the flow revoke it (review M1).
+    const suspended = await authLookupSession(db(), suspendedRefreshHash);
+    expect(suspended?.tenantId).toBe(suspendedTenant);
     const revoked = await authLookupSession(db(), revokedRefreshHash);
     expect(revoked?.revokedAt).toBeInstanceOf(Date);
   });

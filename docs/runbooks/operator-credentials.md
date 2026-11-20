@@ -46,7 +46,7 @@ Flags:
 | `--username`         | staff: yes; driver: optional | Lowercase login name: 3–32 chars of `a-z 0-9 . _ -`.           |
 | `--role`             | no                           | `FACTORY_OPERATOR` (default), `CARRIER_ADMIN`, or `DRIVER`.    |
 | `--phone`            | driver: yes; staff: optional | Normalized before storage.                                     |
-| `--allow-production` | only in production           | See below.                                                     |
+| `--allow-production` | non-local or non-dev runs    | See below.                                                     |
 
 The command refuses to reuse an existing username or phone; it never silently
 overwrites an account.
@@ -107,23 +107,26 @@ Nothing else is printed on success.
 
 ## Production
 
-The commands run without the extra flag only when `NODE_ENV` is exactly
-`development` or `test`. Anything else — `production`, a custom value, or an
-unset variable — is refused unless you pass `--allow-production`:
+The commands run without the extra flag only when **both** conditions hold:
+`NODE_ENV` is exactly `development` or `test`, and `DATABASE_URL` points at a
+**local** database (`localhost`, `127.0.0.1` or `[::1]`). Anything else —
+`production`, a custom or unset variable, or a development label on a host
+with a remote database — is refused unless you pass `--allow-production`:
 
 ```text
-refused: running outside development/test requires --allow-production
+refused: running outside a local development/test database requires --allow-production
 ```
 
 The guard exists so that a stray command in a production shell (or one where
-`NODE_ENV` was never set) cannot create or reset an account by accident. When
-you genuinely need it, add the flag deliberately, on the exact command you
-intend to run. The flag is the only production-specific switch; the password
-is still generated and printed once.
+`NODE_ENV` was never set, or a copied dev `.env` points at the live database)
+cannot create or reset an account by accident. When you genuinely need it, add
+the flag deliberately, on the exact command you intend to run. The flag is the
+only production-specific switch; the password is still generated and printed
+once.
 
-The CLI also refuses a `DATABASE_URL` whose role is a superuser or has
-`BYPASSRLS` — it must be the ordinary runtime role (`bitabar_app`), exactly
-like the API. **F8 note:** these commands currently run the TypeScript sources
+The CLI also refuses a `DATABASE_URL` whose role is a superuser, has
+`BYPASSRLS`, or owns the auth tables — it must be the ordinary runtime role
+(`bitabar_app`). The API performs the same check at startup. **F8 note:** these commands currently run the TypeScript sources
 through `tsx` (a dev dependency). Before deployment, compile the two entries
 into `dist/` and document the production invocation; do not install dev
 dependencies in the production image just to run them.
