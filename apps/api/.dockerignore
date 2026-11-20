@@ -1,0 +1,11 @@
+# Docker build context exclusions for the API image (F1-11 writes the Dockerfile).
+# The dev seed (F1-03 U16) must NEVER ship in any image — keep this entry.
+src/db/seed/**
+
+node_modules
+dist
+.turbo
+coverage
+**/*.test.ts
+.env
+.env.*

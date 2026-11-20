@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — F1-03 در حال انجام: T01–T06 کامل و Commit محلی شدند؛ بعدی T07 (Seed — ۳ نقش) | آخرین Tag: — | آخرین Commit: <T06>
+- فاز فعلی: **F1** — F1-03 در حال انجام: T01–T06 کامل و Commit محلی شدند؛ بعدی T07 (Seed — ۳ نقش) | آخرین Tag: — | آخرین Commit: 332ce7f
 - CI: سبز (F0) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۲۹
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
@@ -33,7 +33,7 @@
 
 ## ۴. انجام‌شده (Changelog) ← جدیدترین بالا
 
-- [۱۴۰۵/۰۸/۲۹ | <T06> | F1-03 T06] `UsersRepository` (U15): create/findById/findByUsername/findByPhone/assignRole/revokeRole/listRoles/softDelete فقط از طریق TenantDb + PiiService؛ بدون HTTP، بدون نوشتن national_id (Q3)؛ ترجمه SQLSTATE به DomainError (23505→conflict، 23503→badInput، بقیه→internal بدون لو رفتن متن SQL)؛ `src/db/sql.ts` re-export عملگرهای drizzle برای حفظ مرز D11. **+ اصلاح امنیتی فیلتر (تصمیم مالک، گزینه A):** `details` فقط برای خطای <500 در پاسخ HTTP می‌آید؛ برای 5xx فقط لاگ با request id (پیش از این `pgCode` به کلاینت لو می‌رفت). نتیجه: ۱۱۵ واحد + ۵۷ ادغام سبز.
+- [۱۴۰۵/۰۸/۲۹ | 332ce7f | F1-03 T06] `UsersRepository` (U15): create/findById/findByUsername/findByPhone/assignRole/revokeRole/listRoles/softDelete فقط از طریق TenantDb + PiiService؛ بدون HTTP، بدون نوشتن national_id (Q3)؛ ترجمه SQLSTATE به DomainError (23505→conflict، 23503→badInput، بقیه→internal بدون لو رفتن متن SQL)؛ `src/db/sql.ts` re-export عملگرهای drizzle برای حفظ مرز D11. **+ اصلاح امنیتی فیلتر (تصمیم مالک، گزینه A):** `details` فقط برای خطای <500 در پاسخ HTTP می‌آید؛ برای 5xx فقط لاگ با request id (پیش از این `pgCode` به کلاینت لو می‌رفت). نتیجه: ۱۱۵ واحد + ۵۷ ادغام سبز.
 - [۱۴۰۵/۰۸/۲۹ | a93dfc6 | F1-03 T05b] کاهش کاتالوگ نقش‌ها به ۳ نقش (تصمیم مالک): Migration سفارشی 0004 (guard در برابر ارجاع user_roles + حذف PLATFORM_ADMIN/CARRIER_OPERATOR/AUDITOR + توضیح جدید CARRIER_ADMIN)؛ تست‌ها به ۳ نقش به‌روز شدند (سناریوی CHECK پلتفرم همچنان 23514 را اثبات می‌کند)؛ اصلاحیه ADR-006، PRD §۲ و BR-16، rls.md؛ OD-37 بسته شد.
 - [۱۴۰۵/۰۸/۲۹ | 1907d3d | F1-03 T05] سوئیت ایزولاسیون `users`/`user_roles` (۱۱ سناریوی جدید به‌عنوان `bitabar_app`: fail-closed، IDOR، 42501، حذف نرم، رد FK/CHECK/scope جعلی، یکتایی phone_hash per-tenant + استفاده مجدد پس از حذف نرم، CHECKهای U12، خالی‌بودن national_id) + guard سخت‌گیرانه U14 با allowlist و کنترل منفی. Fixtureها از مسیر واقعی PII. نتیجه: ۱۰۰ واحد + ۴۴ ادغام سبز.
 - [۱۴۰۵/۰۸/۲۹ | 0da92a6 | F1-03 T04] Migration سفارشی 0003: درج ۶ نقش (ON CONFLICT)، لغو INSERT/UPDATE/DELETE روی `roles`، الگوی RLS روی `users`/`user_roles`، لغو DELETE روی `users` (حذف نرم، U13). نام‌های فارسی نقش‌ها با تست بایت‌محور (hex) روی کانتینر تازه تایید شدند. `rls.md`: فهرست U14 + هشدار recreate.
@@ -75,6 +75,7 @@
 - `sh infra/scripts/dev-up.sh` | `docker compose -f infra/compose/docker-compose.dev.yml down` (بدون `-v`)
 - Migration: `pnpm --filter @bitabar/api db:generate` (ساخت) | `db:check` | `db:migrate` (اجرا با `DATABASE_MIGRATION_URL`) | `db:migrate:prod` (روی build). هرگز خودکار هنگام Start اجرا نمی‌شود.
 - فعال‌سازی لاگین نقش Runtime در dev: `sh infra/scripts/db-app-user.sh` (نیازمند `APP_DB_PASSWORD` واقعی در `.env`).
+- Seed توسعه (فقط local): `pnpm --filter @bitabar/api db:seed:dev` — فقط با `NODE_ENV=development` و دیتابیس localhost اجرا می‌شود؛ نیازمند `DATABASE_MIGRATION_URL` + `DATABASE_URL` + کلیدهای PII در `.env`. idempotent؛ داده کاملاً مصنوعی (tenant `dev-factory` + ۳ کاربر، بدون کد ملی/رمز). در CI/Build/Docker وجود ندارد.
 - Gitleaks: `docker run --rm -v "<repo>:/repo:ro" zricethezav/gitleaks:v8.28.0 git /repo --config /repo/.gitleaks.toml --redact`
 - `pnpm install` | `pnpm lint` | `pnpm typecheck` | `pnpm test` (بدون Docker) | `pnpm test:int` (Testcontainers — نیازمند Docker؛ شامل سوئیت ایزولاسیون `test/rls.int.test.ts`) | `pnpm build` | `pnpm format`
 - قفل هم‌گامی Schema↔Migration: `pnpm --filter @bitabar/api db:generate` باید «No schema changes» بگوید و `git diff --exit-code -- apps/api/drizzle` تمیز بماند (در CI هم enforce می‌شود).
