@@ -23,6 +23,11 @@ export class DomainError extends Error {
     return new DomainError('CONFLICT', 'این مقدار قبلاً ثبت شده است', 409, details);
   }
 
+  /** Missing/invalid credentials or token — 401. Never says which part failed (A3). */
+  static unauthorized(): DomainError {
+    return new DomainError('UNAUTHORIZED', 'احراز هویت نامعتبر است', 401);
+  }
+
   /** Unexpected internal failure (e.g. an untranslated DB error) — 500. Message and details never echo input data. */
   static internal(details?: Record<string, unknown>): DomainError {
     return new DomainError('INTERNAL', 'خطای داخلی سرور رخ داد', 500, details);

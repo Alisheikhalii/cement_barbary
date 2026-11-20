@@ -32,6 +32,7 @@ export async function setup(project: GlobalSetupProject): Promise<void> {
   // service without ever storing fixed keys.
   process.env.PII_ENC_KEY ??= randomBytes(32).toString('base64');
   process.env.PII_HMAC_KEY ??= randomBytes(32).toString('base64');
+  process.env.AUTH_TOKEN_SECRET ??= randomBytes(32).toString('base64');
 
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const ownerUrl = container.getConnectionUri();

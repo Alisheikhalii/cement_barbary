@@ -7,12 +7,14 @@ import { parseEnv } from './env.js';
 // Random per run (ADR-006 U17) — test-only placeholders, never real secrets.
 const PII_ENC = randomBytes(32).toString('base64');
 const PII_HMAC = randomBytes(32).toString('base64');
+const TOKEN_SECRET = randomBytes(32).toString('base64');
 
 /** Minimal valid environment; individual tests override one variable. */
 const BASE_ENV = {
   DATABASE_URL: 'postgresql://bitabar_app:secret-pw@localhost:5432/bitabar',
   PII_ENC_KEY: PII_ENC,
   PII_HMAC_KEY: PII_HMAC,
+  AUTH_TOKEN_SECRET: TOKEN_SECRET,
 };
 
 describe('parseEnv', () => {
@@ -142,6 +144,7 @@ describe('parseEnv PII keys (ADR-006 U10)', () => {
         DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
         PII_ENC_KEY: secretKey,
         PII_HMAC_KEY: secretKey,
+        AUTH_TOKEN_SECRET: TOKEN_SECRET,
       });
       expect.unreachable();
     } catch (error) {
@@ -192,8 +195,64 @@ describe('parseEnv auth config (ADR-007, F1-04)', () => {
     expect(() => parseEnv({ ...BASE_ENV, AUTH_ACCESS_TOKEN_TTL_SECONDS: '30' })).toThrow(
       /AUTH_ACCESS_TOKEN_TTL_SECONDS/,
     );
+    // Owner T05 rule: access tokens stay short — 15 minutes is the ceiling.
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_ACCESS_TOKEN_TTL_SECONDS: '901' })).toThrow(
+      /AUTH_ACCESS_TOKEN_TTL_SECONDS/,
+    );
+    expect(
+      parseEnv({ ...BASE_ENV, AUTH_ACCESS_TOKEN_TTL_SECONDS: '900' }).auth.accessTokenTtlSeconds,
+    ).toBe(900);
     expect(() => parseEnv({ ...BASE_ENV, AUTH_TEMP_PASSWORD_TTL_HOURS: '0' })).toThrow(
       /AUTH_TEMP_PASSWORD_TTL_HOURS/,
+    );
+  });
+});
+
+describe('parseEnv AUTH_TOKEN_SECRET (ADR-007 A7/A13)', () => {
+  it('decodes 32–64 random bytes from base64', () => {
+    const config = parseEnv({ ...BASE_ENV });
+    expect(config.auth.tokenSecret).toHaveLength(32);
+    const longer = parseEnv({
+      ...BASE_ENV,
+      AUTH_TOKEN_SECRET: randomBytes(48).toString('base64'),
+    });
+    expect(longer.auth.tokenSecret).toHaveLength(48);
+  });
+
+  it('is required — a missing secret fails startup', () => {
+    const withoutSecret: Record<string, string | undefined> = { ...BASE_ENV };
+    delete withoutSecret.AUTH_TOKEN_SECRET;
+    expect(() => parseEnv(withoutSecret)).toThrow(/AUTH_TOKEN_SECRET/);
+  });
+
+  it('rejects a short key (16 bytes) and a non-base64 value', () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, AUTH_TOKEN_SECRET: randomBytes(16).toString('base64') }),
+    ).toThrow(/AUTH_TOKEN_SECRET/);
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_TOKEN_SECRET: 'not+base64===' })).toThrow(
+      /AUTH_TOKEN_SECRET/,
+    );
+  });
+
+  it('never leaks the secret into a validation error message', () => {
+    const shortKey = randomBytes(16).toString('base64');
+    let message = '';
+    try {
+      parseEnv({ ...BASE_ENV, AUTH_TOKEN_SECRET: shortKey });
+      expect.unreachable();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/AUTH_TOKEN_SECRET/);
+    expect(message).not.toContain(shortKey);
+  });
+
+  it('rejects a secret equal to either PII key (A13: one leak, one purpose)', () => {
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_TOKEN_SECRET: PII_ENC })).toThrow(
+      /AUTH_TOKEN_SECRET: must differ from PII_ENC_KEY/,
+    );
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_TOKEN_SECRET: PII_HMAC })).toThrow(
+      /AUTH_TOKEN_SECRET: must differ from PII_HMAC_KEY/,
     );
   });
 });

@@ -41,18 +41,27 @@ without changing the login flow, tokens, sessions or tables (plan §J).
 
 ## Tokens
 
-|                   | Access token                                     | Refresh token                                   |
-| ----------------- | ------------------------------------------------ | ----------------------------------------------- |
-| Format            | JWT HS256 (`jose`)                               | opaque 32-byte random (base64url)               |
-| Lifetime          | 10 min (`AUTH_ACCESS_TOKEN_TTL_SECONDS`)         | 30 days                                         |
-| Claims / content  | `sub tid sid roles jti iat exp` — **no PII**     | random only; **SHA-256 hash stored**            |
-| Transport         | JSON body → client memory (Authorization header) | HttpOnly cookie `bitabar_refresh`, `Path=/auth` |
-| Verify            | algorithm pinned `['HS256']`, `iss/aud/exp`      | hash compare + rotation check                   |
-| Theft containment | short TTL                                        | rotation; reuse → **whole family revoked**      |
+|                   | Access token                                     | Refresh token                                          |
+| ----------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| Format            | JWT HS256 (`jose`)                               | opaque 32-byte random (base64url)                      |
+| Lifetime          | 10 min (`AUTH_ACCESS_TOKEN_TTL_SECONDS`)         | 30 days                                                |
+| Claims / content  | `sub tid sid roles jti iat exp` — **no PII**     | random only; **SHA-256 hash stored**                   |
+| Transport         | JSON body → client memory (Authorization header) | HttpOnly cookie `bitabar_refresh`, `Path=/api/v1/auth` |
+| Verify            | algorithm pinned `['HS256']`, `iss/aud/exp`      | hash compare + rotation check                          |
+| Theft containment | short TTL                                        | rotation; reuse → **whole family revoked**             |
 
 Cookie flags: `HttpOnly` always; `Secure` always except local dev over plain http; `SameSite=Lax`
-(Lax already blocks cross-site POSTs to the POST-only cookie endpoints) + Origin/`Sec-Fetch-Site`
-check on cookie endpoints (CSRF).
+(Lax already blocks cross-site POSTs to the POST-only cookie endpoints); `Path=/api/v1/auth`
+(the auth routes sit under the global prefix) + Origin/`Sec-Fetch-Site` check on cookie endpoints
+(CSRF). On rotation the cookie's Max-Age must be the session's **remaining** lifetime, not a fresh
+30 days (`refreshCookieMaxAgeSeconds`).
+
+Rotation is one conditional `UPDATE … WHERE refresh_hash = <old> AND revoked_at IS NULL AND
+expires_at > now()`: PostgreSQL's row lock makes exactly one of any number of simultaneous
+refreshes succeed; the losers re-read the committed row, see their token as
+`previous_refresh_hash`, and the family is revoked as reuse. A refresh token is resolved before a
+tenant context exists only through `app.auth_lookup_session` (T04). Logout is idempotent and silent
+for unknown/malformed tokens — it never becomes an oracle.
 
 ## Rate limits (all env config)
 

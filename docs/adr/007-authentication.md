@@ -45,11 +45,14 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
   pins `algorithms: ['HS256']` (no alg switching) and checks `iss`/`aud`/`exp`.
 - **A8 — Refresh token (condition 5):** opaque 32-byte random, only its SHA-256 hash at rest;
   HttpOnly cookie `bitabar_refresh` (`Secure` except local http dev; `SameSite=Lax` — Lax already
-  withholds the cookie from cross-site POSTs and the cookie endpoints are POST-only; `Path=/auth`;
-  30 d). Rotation on every refresh; presenting a rotated token **revokes the whole token family**.
+  withholds the cookie from cross-site POSTs and the cookie endpoints are POST-only;
+  `Path=/api/v1/auth` — the auth endpoints sit under the global API prefix, unlike /health; 30 d).
+  Rotation on every refresh; presenting the **immediately previous** rotated token **revokes the
+  whole token family** (only that one hash is retained; older tokens are simply unknown).
 - **A9 — `auth_sessions`** (tenant-owned, RLS): refresh hashes, `family_id`, rotation/revocation
-  fields, `ip`, `user_agent`; soft-revoke only; concurrent refreshes serialized with
-  `SELECT … FOR UPDATE`.
+  fields, `ip`, `user_agent`; soft-revoke only. Concurrent refreshes are serialized by a single
+  conditional `UPDATE … WHERE refresh_hash = <old>` (T05): the row lock makes exactly one replay
+  win; a loser sees its token as `previous_refresh_hash` and triggers family revocation.
 - **A10 — BR-18:** a successful driver login revokes the user's other sessions in the same
   transaction (last device wins).
 - **A11 — Rate limiting (Q2, condition 1):** a `RateLimiter` interface over the Postgres
@@ -59,7 +62,7 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
   one later without caller changes.
 - **A12 — CSRF:** SameSite=Lax **plus** an Origin / `Sec-Fetch-Site` check on the cookie endpoints;
   the access token never rides a cookie.
-- **A13 — Secrets from env only:** `AUTH_TOKEN_SECRET` (base64 → exactly 32 bytes), startup-checked
+- **A13 — Secrets from env only:** `AUTH_TOKEN_SECRET` (base64 → 32–64 random bytes), startup-checked
   distinct from both PII keys; seed passwords from `DEV_SEED_OPERATOR/CARRIER/DRIVER_PASSWORD`
   with no defaults; `.env.example` holds placeholders only.
 - **A14 — Logging hygiene:** pino key-based redaction extended to passwords, tokens, cookie/auth
@@ -111,6 +114,24 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
   exists (plan §J); extra token machinery is extra attack surface.
 - OTP login in v1 — deferred by the owner: designed in plan §J (plug-in point, `otp_challenges`
   DDL, security rules), built in a later phase.
+
+**Accepted risk — one-rotation-back reuse detection (owner T05 approval):**
+
+`auth_sessions` retains only the immediately previous refresh hash. Replaying the token that was
+rotated out **one** rotation ago is detected and revokes the family. A token two or more rotations
+old no longer matches any stored hash, so it is treated as **plain-invalid** (generic 401) and does
+**not** revoke the family. This is accepted: the stale token can never authenticate, and keeping a
+full token history would grow unbounded and make every legitimately expired token a family-killer.
+The residual gap is narrower detection of very old theft — the 10-minute access-token TTL and
+`last_used_at` monitoring in F7 bound it.
+
+**Clock assumptions (owner T05 approval):**
+
+Access-token `exp` is evaluated against the **Node process clock**; session expiry
+(`auth_sessions.expires_at`, rotation windows) is evaluated by **PostgreSQL**. All app and database
+hosts therefore **must run NTP**; a divergence beyond the 5-second `clockTolerance` on JWT verify
+rejects fresh tokens (or, in the other direction, extends them by the skew). The 5 s tolerance is
+deliberate and small; do not raise it as a substitute for time sync.
 
 **Accepted risk — password hashes are readable through the login lookup (owner checkpoint 2):**
 

@@ -27,6 +27,7 @@ describe('API skeleton (integration)', () => {
     process.env.DATABASE_URL ??= 'postgresql://bitabar_app:dummy@localhost:5432/bitabar';
     process.env.PII_ENC_KEY ??= randomBytes(32).toString('base64');
     process.env.PII_HMAC_KEY ??= randomBytes(32).toString('base64');
+    process.env.AUTH_TOKEN_SECRET ??= randomBytes(32).toString('base64');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(DbHealth)
       .useValue(dbHealthStub)

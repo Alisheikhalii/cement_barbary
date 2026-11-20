@@ -11,6 +11,7 @@ function makeConfig(overrides: Record<string, string> = {}): AppConfig {
     DATABASE_URL: 'postgresql://bitabar_app:x@localhost:5432/bitabar',
     PII_ENC_KEY: randomBytes(32).toString('base64'),
     PII_HMAC_KEY: randomBytes(32).toString('base64'),
+    AUTH_TOKEN_SECRET: randomBytes(32).toString('base64'),
     ...overrides,
   });
 }

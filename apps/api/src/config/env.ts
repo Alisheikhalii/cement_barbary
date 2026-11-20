@@ -13,6 +13,19 @@ const piiKeySchema = z
   .transform((value) => Buffer.from(value, 'base64'));
 
 /**
+ * HS256 signing key (ADR-007 A7/A13): base64 of 32–64 random bytes. The
+ * strict alphabet + padding check stops Buffer.from's lenient decoding from
+ * turning a typo into a shorter key; the byte-length floor is the HS256
+ * minimum. Distinctness from both PII keys is enforced in superRefine.
+ */
+const tokenSecretSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9+/]+={0,2}$/, 'must be base64')
+  .refine((value) => value.length % 4 === 0, 'must be base64')
+  .transform((value) => Buffer.from(value, 'base64'))
+  .refine((key) => key.length >= 32 && key.length <= 64, 'must decode to 32–64 random bytes');
+
+/**
  * The OWASP Argon2id minimum (ADR-007 A1) — the single source of truth for the
  * floor: the Zod mins/defaults below and the password service's dummy-hash
  * params both derive from it. Raise it only together with DUMMY_HASH (the
@@ -77,8 +90,11 @@ const envSchema = z
     // A11: login rate limits (fixed 60 s windows; per-account delay is A2, not these).
     AUTH_RL_LOGIN_IP_PER_MIN: z.coerce.number().int().min(1).max(10000).default(20),
     AUTH_RL_LOGIN_TENANT_PER_MIN: z.coerce.number().int().min(1).max(100000).default(60),
+    // A7/A13: HS256 key (base64 of 32–64 random bytes, distinct from PII keys).
+    AUTH_TOKEN_SECRET: tokenSecretSchema,
     // A7: access-token lifetime.
-    AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(600),
+    // Owner T05 rule: access tokens stay short (10–15 min); 900 s is the ceiling.
+    AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(600),
     // A19: operator-set one-time password lifetime.
     AUTH_TEMP_PASSWORD_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   })
@@ -93,6 +109,18 @@ const envSchema = z
         path: ['PII_HMAC_KEY'],
         message: 'must differ from PII_ENC_KEY',
       });
+    }
+    if (Buffer.isBuffer(data.AUTH_TOKEN_SECRET)) {
+      // A13: one leaked secret must not be useful against two purposes.
+      for (const other of ['PII_ENC_KEY', 'PII_HMAC_KEY'] as const) {
+        if (data.AUTH_TOKEN_SECRET.equals(data[other])) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['AUTH_TOKEN_SECRET'],
+            message: `must differ from ${other}`,
+          });
+        }
+      }
     }
     if (data.AUTH_LOCK_BASE_SECONDS > data.AUTH_LOCK_MAX_SECONDS) {
       ctx.addIssue({
@@ -140,6 +168,8 @@ export interface AppConfig {
       loginIpPerMinute: number;
       loginTenantPerMinute: number;
     };
+    /** A7: HS256 signing key — 32–64 bytes, distinct from the PII keys. */
+    tokenSecret: Buffer;
     /** A7: access-token lifetime. */
     accessTokenTtlSeconds: number;
     /** A19: one-time password lifetime. */
@@ -186,6 +216,7 @@ export function parseEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
         loginIpPerMinute: parsed.data.AUTH_RL_LOGIN_IP_PER_MIN,
         loginTenantPerMinute: parsed.data.AUTH_RL_LOGIN_TENANT_PER_MIN,
       },
+      tokenSecret: parsed.data.AUTH_TOKEN_SECRET,
       accessTokenTtlSeconds: parsed.data.AUTH_ACCESS_TOKEN_TTL_SECONDS,
       tempPasswordTtlHours: parsed.data.AUTH_TEMP_PASSWORD_TTL_HOURS,
     },
