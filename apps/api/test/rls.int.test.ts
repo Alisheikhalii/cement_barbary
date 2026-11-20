@@ -308,6 +308,10 @@ describe('RLS isolation suite (runtime role)', () => {
     const ALLOWLIST = new Map([
       ['tenants', 'platform-owned tenant registry; the row IS the tenant (RLS on id, F1-02)'],
       ['roles', 'global read-only role catalog; bitabar_app has SELECT only (ADR-006 U1)'],
+      [
+        'auth_rate_limits',
+        'global fixed-window security counters; the bucket is inside the key, no tenant ownership, no PII (ADR-007 A11/A16); DELETE is kept for the TTL sweep',
+      ],
     ]);
     for (const [table, reason] of ALLOWLIST) {
       expect(reason.length, `allowlist entry ${table} needs a written reason`).toBeGreaterThan(0);
@@ -340,14 +344,18 @@ describe('RLS isolation suite (runtime role)', () => {
 
     // Negative controls: a tenant_id table WITHOUT RLS, and a table with NO
     // tenant_id that is not allowlisted — both must be flagged, proving the
-    // guard is not vacuous.
-    await owner.query('CREATE TABLE rls_guard_negative (id uuid, tenant_id uuid)');
-    await owner.query('CREATE TABLE rls_guard_stray (id uuid)');
-    const flagged = violations((await owner.query(GUARD_SQL)).rows as GuardRow[]);
-    expect(flagged).toContain('rls_guard_negative');
-    expect(flagged).toContain('rls_guard_stray');
-    await owner.query('DROP TABLE rls_guard_negative');
-    await owner.query('DROP TABLE rls_guard_stray');
+    // guard is not vacuous. Cleanup is in `finally` so a failed assertion
+    // cannot leak the stray tables into the rest of the suite.
+    try {
+      await owner.query('CREATE TABLE rls_guard_negative (id uuid, tenant_id uuid)');
+      await owner.query('CREATE TABLE rls_guard_stray (id uuid)');
+      const flagged = violations((await owner.query(GUARD_SQL)).rows as GuardRow[]);
+      expect(flagged).toContain('rls_guard_negative');
+      expect(flagged).toContain('rls_guard_stray');
+    } finally {
+      await owner.query('DROP TABLE IF EXISTS rls_guard_negative');
+      await owner.query('DROP TABLE IF EXISTS rls_guard_stray');
+    }
 
     // Positive: with the controls gone, nothing violates; the allowlist is
     // exactly the set of public tables without tenant_id (no more, no less).
@@ -646,5 +654,108 @@ describe('RLS isolation suite (runtime role)', () => {
       'select count(*)::int as n from users where national_id_enc is not null or national_id_hash is not null',
     );
     expect(res.rows[0]?.n).toBe(0);
+  });
+
+  // ---------- F1-04 T04: user_credentials / auth_sessions (ADR-007 A16) ----------
+
+  it('auth tables — no context returns 0 rows from both (fail closed)', async () => {
+    const creds = await app.query('select id from user_credentials');
+    const sessions = await app.query('select id from auth_sessions');
+    expect(creds.rows).toHaveLength(0);
+    expect(sessions.rows).toHaveLength(0);
+  });
+
+  it('auth tables — context A sees only A’s rows; B’s ids return 0 rows (IDOR)', async () => {
+    const owner = ownerPool();
+    const credA = uuidv7();
+    const credB = uuidv7();
+    const sessA = uuidv7();
+    const sessB = uuidv7();
+    const phc = '$argon2id$v=19$m=19456,t=2,p=1$dGVzdHNhbHQ$dGVzdGhhc2g';
+    await owner.query(
+      `INSERT INTO user_credentials (id, tenant_id, user_id, password_hash)
+       VALUES ($1, $2, $3, $5), ($4, $6, $7, $5)`,
+      [credA, tenantA, userA, credB, phc, tenantB, userB],
+    );
+    await owner.query(
+      `INSERT INTO auth_sessions (id, tenant_id, user_id, family_id, refresh_hash, expires_at)
+       VALUES ($1, $2, $3, $1, $5, now() + interval '30 days'),
+              ($4, $6, $7, $4, $8, now() + interval '30 days')`,
+      [sessA, tenantA, userA, sessB, Buffer.alloc(32, 1), tenantB, userB, Buffer.alloc(32, 2)],
+    );
+    try {
+      await inTenant(tenantA, async (tx) => {
+        const creds = await tx.execute(sql`select id, tenant_id from user_credentials`);
+        const credRows = creds.rows as { id: string; tenant_id: string }[];
+        expect(credRows.map((r) => r.id)).toEqual([credA]);
+        expect(credRows.every((r) => r.tenant_id === tenantA)).toBe(true);
+
+        const byB = await tx.execute(sql`select id from user_credentials where id = ${credB}`);
+        expect(byB.rows).toHaveLength(0);
+
+        const sessions = await tx.execute(sql`select id, tenant_id from auth_sessions`);
+        const sessRows = sessions.rows as { id: string; tenant_id: string }[];
+        expect(sessRows.map((r) => r.id)).toEqual([sessA]);
+        expect(sessRows.every((r) => r.tenant_id === tenantA)).toBe(true);
+
+        const sessByB = await tx.execute(sql`select id from auth_sessions where id = ${sessB}`);
+        expect(sessByB.rows).toHaveLength(0);
+
+        // Cross-tenant UPDATE affects 0 rows; B's rows stay intact.
+        const upd = await tx.execute(
+          sql`update user_credentials set failed_attempts = 99 where id = ${credB}`,
+        );
+        expect(upd.rowCount).toBe(0);
+      });
+      const check = await owner.query(
+        'select failed_attempts from user_credentials where id = $1',
+        [credB],
+      );
+      expect((check.rows[0] as { failed_attempts: number }).failed_attempts).toBe(0);
+    } finally {
+      await owner.query('delete from auth_sessions where id = any($1::uuid[])', [[sessA, sessB]]);
+      await owner.query('delete from user_credentials where id = any($1::uuid[])', [
+        [credA, credB],
+      ]);
+    }
+  });
+
+  it('user_credentials — a one-time password (expiry) always forces a change (A19 CHECK)', async () => {
+    const phc = '$argon2id$v=19$m=19456,t=2,p=1$dGVzdHNhbHQ$dGVzdGhhc2g';
+    await expectPgRejection(
+      ownerPool().query(
+        `INSERT INTO user_credentials
+           (id, tenant_id, user_id, password_hash, must_change_password, temporary_password_expires_at)
+         VALUES ($1, $2, $3, $4, false, now() + interval '1 day')`,
+        [uuidv7(), tenantA, userA, phc],
+      ),
+      '23514',
+    );
+  });
+
+  it('auth tables — cross-tenant INSERT is rejected (42501) and DELETE is denied even in own tenant', async () => {
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into user_credentials (id, tenant_id, user_id, password_hash)
+              values (${uuidv7()}, ${tenantB}, ${userB}, '$argon2id$v=19$m=19456,t=2,p=1$eA$eA')`,
+        );
+      }),
+      '42501',
+    );
+    // Soft/append-only (A9/A19): the runtime role has no DELETE on either
+    // table — rows are revoked via status/revoked_at, never hard-deleted.
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(sql`delete from user_credentials where user_id = ${userA}`);
+      }),
+      '42501',
+    );
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(sql`delete from auth_sessions where user_id = ${userA}`);
+      }),
+      '42501',
+    );
   });
 });

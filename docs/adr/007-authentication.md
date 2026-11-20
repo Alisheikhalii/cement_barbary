@@ -72,11 +72,16 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
   `auth_sessions` with isolation probes; `auth_rate_limits` joins the U14 allowlist with a written
   reason; the guard test and its negative control stay green.
 - **A17 — Pre-auth lookup via SECURITY DEFINER functions** (condition 4): `app.list_tenants()`,
-  `app.auth_lookup_username(tenant_code, username)`, `app.auth_lookup_phone(pairs jsonb)` — owned
-  by the migration owner, `SET search_path = pg_catalog, pg_temp` pinned, **no dynamic SQL**,
-  minimal columns only (no PII, no ciphertext), `EXECUTE` revoked from PUBLIC and granted to
-  `bitabar_app` only. Enumeration tests prove unknown tenant-code/username/phone all return the
-  same empty result.
+  `app.auth_lookup_username(tenant_code, username)`, `app.auth_lookup_phone(pairs jsonb)` and —
+  added at the T03+T04 checkpoint for the opaque-refresh design of A8, with owner approval —
+  `app.auth_lookup_session(refresh_hash_hex)`, which resolves the refresh cookie to its session
+  without a tenant context and flags rotated-token reuse. All four are owned by the migration
+  owner, `SET search_path = pg_catalog, pg_temp` pinned, **no dynamic SQL**, minimal columns only
+  (no PII, no ciphertext beyond the `password_hash` an authentication lookup exists to read),
+  `EXECUTE` revoked from PUBLIC and granted to `bitabar_app` only. Enumeration tests prove unknown
+  tenant-code/username/phone all return the same empty result. A catalog test asserts these four
+  are the **complete** set of SECURITY DEFINER functions in schema `app`, so a fifth cannot appear
+  silently.
 - **A18 — Freshness at refresh:** refresh re-reads `status` and roles; a disabled or deleted user
   is revoked and gets the generic 401.
 - **A19 — First password, forced change and reset (Q4, conditions 2+6):**
@@ -106,6 +111,24 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
   exists (plan §J); extra token machinery is extra attack surface.
 - OTP login in v1 — deferred by the owner: designed in plan §J (plug-in point, `otp_challenges`
   DDL, security rules), built in a later phase.
+
+**Accepted risk — password hashes are readable through the login lookup (owner checkpoint 2):**
+
+Verifying a password requires the stored Argon2id PHC string, so a caller of
+`app.auth_lookup_username` that already knows a tenant code **and** a username can read that one
+user's `password_hash`. The owner accepted this residual exposure. It is bounded, not open-ended:
+
+- the function returns at most one row of minimal columns and never enumerates — a wrong tenant
+  code, unknown user or unknown phone all produce the identical empty result, so the function cannot
+  be used to discover which accounts exist;
+- the hash is Argon2id at ≥ the OWASP floor (A1); cracking a lone hash stays expensive, and a stored
+  hash declaring absurd parameters is rejected before Argon2 runs;
+- reaching the lookup already costs the caller the generic-401 path, the per-IP and per-tenant
+  rate limits (A11) and the progressive delay (A2);
+- the runtime role has no other cross-tenant read path: these four (and only these four) functions
+  are the **complete** set of SECURITY DEFINER functions in schema `app`, asserted by catalog test.
+  Any new definer function must repeat A17's checklist — owner-run, pinned `search_path`, static
+  SQL, minimal columns, PUBLIC revoked, `bitabar_app` only — and pass the same review.
 
 **Consequences:**
 

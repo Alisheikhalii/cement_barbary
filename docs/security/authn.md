@@ -78,9 +78,10 @@ are F1-05.
 - `auth_rate_limits`: global, on the U14 allowlist (security counters, no tenant ownership, no
   PII).
 - Pre-auth lookups cross RLS only through SECURITY DEFINER functions (`app.list_tenants()`,
-  `app.auth_lookup_username`, `app.auth_lookup_phone`): pinned `search_path`, no dynamic SQL,
-  minimal columns (no PII, no ciphertext), `EXECUTE` revoked from PUBLIC, granted to
-  `bitabar_app` only.
+  `app.auth_lookup_username`, `app.auth_lookup_phone`, and `app.auth_lookup_session` — the last
+  resolves the opaque refresh cookie to its session for refresh/logout/reuse detection, added at
+  the T03+T04 checkpoint for the A8 design): pinned `search_path`, no dynamic SQL, minimal columns
+  (no PII, no ciphertext), `EXECUTE` revoked from PUBLIC, granted to `bitabar_app` only.
 
 ## How to add an auth table
 

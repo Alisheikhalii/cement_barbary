@@ -15,14 +15,14 @@ describe('migrations (integration)', () => {
     const journal = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(journal.rows[0]?.n).toBe(5);
+    expect(journal.rows[0]?.n).toBe(8);
 
     // Second run: no error, no new journal rows.
     await expect(runMigrations(inject('ownerUrl'))).resolves.toBeUndefined();
     const again = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(again.rows[0]?.n).toBe(5);
+    expect(again.rows[0]?.n).toBe(8);
   });
 
   it('bitabar_app has no superuser, bypass-rls, create-role or login-via-git privileges', async () => {
@@ -47,15 +47,17 @@ describe('migrations (integration)', () => {
     expect(result.rows[0]?.tableowner).not.toBe('bitabar_app');
   });
 
-  it('tenants, users and user_roles have row-level security enabled', async () => {
+  it('tenant-owned tables have row-level security enabled (auth tables included)', async () => {
     const result = await ownerPool().query<{ relname: string; relrowsecurity: boolean }>(
       `SELECT relname, relrowsecurity FROM pg_class
-       WHERE relname = ANY ('{tenants,users,user_roles}')
+       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials}')
          AND relnamespace = 'public'::regnamespace
        ORDER BY relname`,
     );
     expect(result.rows).toEqual([
+      { relname: 'auth_sessions', relrowsecurity: true },
       { relname: 'tenants', relrowsecurity: true },
+      { relname: 'user_credentials', relrowsecurity: true },
       { relname: 'user_roles', relrowsecurity: true },
       { relname: 'users', relrowsecurity: true },
     ]);
@@ -121,15 +123,30 @@ describe('migrations (integration)', () => {
        FROM (VALUES
          ('roles', 'SELECT'), ('roles', 'INSERT'), ('roles', 'UPDATE'), ('roles', 'DELETE'),
          ('users', 'SELECT'), ('users', 'INSERT'), ('users', 'UPDATE'), ('users', 'DELETE'),
-         ('user_roles', 'SELECT'), ('user_roles', 'INSERT'), ('user_roles', 'UPDATE'), ('user_roles', 'DELETE')
+         ('user_roles', 'SELECT'), ('user_roles', 'INSERT'), ('user_roles', 'UPDATE'), ('user_roles', 'DELETE'),
+         ('user_credentials', 'SELECT'), ('user_credentials', 'INSERT'), ('user_credentials', 'UPDATE'), ('user_credentials', 'DELETE'),
+         ('auth_sessions', 'SELECT'), ('auth_sessions', 'INSERT'), ('auth_sessions', 'UPDATE'), ('auth_sessions', 'DELETE'),
+         ('auth_rate_limits', 'SELECT'), ('auth_rate_limits', 'INSERT'), ('auth_rate_limits', 'UPDATE'), ('auth_rate_limits', 'DELETE')
        ) AS checks(t, p)
        ORDER BY t, p`,
     );
     expect(result.rows).toEqual([
+      { t: 'auth_rate_limits', p: 'DELETE', allowed: true }, // TTL sweep deletes expired counters
+      { t: 'auth_rate_limits', p: 'INSERT', allowed: true },
+      { t: 'auth_rate_limits', p: 'SELECT', allowed: true },
+      { t: 'auth_rate_limits', p: 'UPDATE', allowed: true },
+      { t: 'auth_sessions', p: 'DELETE', allowed: false }, // soft-revoke only (A9)
+      { t: 'auth_sessions', p: 'INSERT', allowed: true },
+      { t: 'auth_sessions', p: 'SELECT', allowed: true },
+      { t: 'auth_sessions', p: 'UPDATE', allowed: true },
       { t: 'roles', p: 'DELETE', allowed: false },
       { t: 'roles', p: 'INSERT', allowed: false },
       { t: 'roles', p: 'SELECT', allowed: true },
       { t: 'roles', p: 'UPDATE', allowed: false },
+      { t: 'user_credentials', p: 'DELETE', allowed: false }, // updated, never hard-deleted
+      { t: 'user_credentials', p: 'INSERT', allowed: true },
+      { t: 'user_credentials', p: 'SELECT', allowed: true },
+      { t: 'user_credentials', p: 'UPDATE', allowed: true },
       { t: 'user_roles', p: 'DELETE', allowed: true },
       { t: 'user_roles', p: 'INSERT', allowed: true },
       { t: 'user_roles', p: 'SELECT', allowed: true },
