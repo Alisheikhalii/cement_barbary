@@ -42,5 +42,9 @@ paths = [
 regexes = [
   '''09000000000''',
   '''0912000000[0-9]''',
+  # The same synthetic range in its prefixed written forms (+98 / 0098),
+  # used by phone-normalization fixtures (U17).
+  '''\+98912000000[0-9]''',
+  '''0098912000000[0-9]''',
   '''IR0{24}''',
 ]

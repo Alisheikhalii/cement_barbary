@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 
 import { ESLint } from 'eslint';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * Proves the ADR-005 D11 boundary rule in eslint.config.mjs actually fires:
@@ -10,9 +10,12 @@ import { describe, expect, it } from 'vitest';
  */
 const apiRoot = fileURLToPath(new URL('..', import.meta.url));
 
-// One shared ESLint instance: constructing it per assertion made this suite
-// time out under parallel worker load.
-const eslint = new ESLint({ cwd: apiRoot });
+// One shared ESLint instance, created and WARMED in beforeAll: flat-config and
+// plugin resolution is lazy, so the first lintText call pays the full load
+// cost. Doing it here (with a generous hook timeout) keeps that one-time cost
+// out of individual test timeouts — the cause of this suite's past flakes
+// under parallel worker load (T08, root-caused by investigation subagent).
+let eslint: ESLint;
 
 async function lintRules(code: string, filePath: string): Promise<(string | null)[]> {
   const [result] = await eslint.lintText(code, { filePath });
@@ -30,6 +33,12 @@ const FORBIDDEN_IMPORTS = [
 
 // Programmatic ESLint is slow on contended machines; give it room.
 describe('ESLint D11 boundary (no-restricted-imports)', { timeout: 30000 }, () => {
+  beforeAll(async () => {
+    eslint = new ESLint({ cwd: apiRoot });
+    // Warm-up: force the one-time flat-config/plugin load inside the hook.
+    await eslint.lintText('export {};\n', { filePath: 'src/db/probe.ts' });
+  }, 60000);
+
   it.each(FORBIDDEN_IMPORTS)('rejects raw DB imports outside src/db/**: %s', async (code) => {
     const rules = await lintRules(code, 'src/modules/probe/probe.ts');
     expect(rules).toContain('no-restricted-imports');

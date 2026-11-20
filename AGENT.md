@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — F1-03 در حال انجام: T01–T06 کامل و Commit محلی شدند؛ بعدی T07 (Seed — ۳ نقش) | آخرین Tag: — | آخرین Commit: 332ce7f
+- فاز فعلی: **F1** — F1-03 **کامل شد** (T01–T08، Commitهای محلی تا 156a698 + T08)؛ بعدی F1-04 (احراز هویت) با تایید مالک | آخرین Tag: — | آخرین Commit: 3ac43eb
 - CI: سبز (F0) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۲۹
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
@@ -15,6 +15,7 @@
 - `apps/api`: **NestJS 11 (ESM/NodeNext)** — Config با اعتبارسنجی Zod، پاسخ/خطای استاندارد (`{data,meta}`/`{error}`)، لاگ JSON با nestjs-pino + request-id، Health (`/health/live`، `/health/ready` بدون پیشوند)، Swagger در `/api/docs`، Helmet + CORS محیطی، ZodValidationPipe. (F1-01)
 - `apps/api/src/db` (F1-02، تنها مرز DB طبق ADR-005): `schema/` (Drizzle، جدول `tenants`)، `database.providers` (Pool/DB داخلی، نقش `bitabar_app`)، `TenantContext` (AsyncLocalStorage، اعتبارسنجی UUID با Zod)، `TenantDb.run` (تراکنش + `set_config` تراکنسیِ پارامتری برای `app.tenant_id`/`app.carrier_id`، reuse تودرتو با همان scope، fail-closed با `TENANT_CONTEXT_MISSING`، Proxy محافظ: handle پس از پایان run می‌میرد)، `migrate.ts` (CLI فقط با `DATABASE_MIGRATION_URL`، هرگز خودکار هنگام Start)، `db-health`. قانون ESLint: import خام `pg`/`drizzle-orm`/توکن‌های DB خارج از `src/db/**` ممنوع (تست اثبات در `test/eslint-boundary.test.ts`).
 - `apps/web`: فعلاً فقط اسکلت پوشه.
+- `apps/api/src/modules/users` (F1-03 T06): `UsersRepository` — تنها مسیر خواندن/نوشتن کاربران (TenantDb + PiiService، بدون HTTP)؛ `apps/api/src/security/pii`: رمزنگاری AES-256-GCM+AAD، Blind Index، نرمال‌سازی، mask؛ `apps/api/src/db/seed/dev-seed.ts` (T07): Seed مصنوعی فقط-dev با guard محیطی، خارج از build/Docker/CI. فیلتر خطا: `details` فقط برای <500 در پاسخ HTTP (تصمیم مالک، T06).
 - `infra/compose/docker-compose.dev.yml`: PostgreSQL 17 + Redis 7 (فقط 127.0.0.1، healthcheck، پروژه `bitabar-dev`).
 - مدل داده: جدول `tenants` (RLS فعال + سیاست ایزولاسیون؛ INSERT/DELETE برای نقش Runtime ممنوع) + توابع `app.current_tenant_id()`/`app.current_carrier_id()` (fail-closed: بدون context هیچ سطری دیده نمی‌شود). Migrationها: `apps/api/drizzle/0000_init_tenants.sql` و `0001_rls_foundation.sql`.
 - Endpointها: فقط Health (`/health/live`، `/health/ready` با پینگ واقعی DB: 200/503).
@@ -33,6 +34,8 @@
 
 ## ۴. انجام‌شده (Changelog) ← جدیدترین بالا
 
+- [۱۴۰۵/۰۸/۲۹ | 3ac43eb | F1-03 T08] جمع‌بندی F1-03: رفع تست flaky (warm-up نمونه ESLint در beforeAll با hookTimeout=60s + maxWorkers=4 + turbo --concurrency=2 — پایداری: ۲۰ اجرای متوالی سبز)؛ پاک‌سازی literalهای U17 (الگوی قدیمی موبایل/کدملی در مستندات و تست‌ها → بازه allowlist + randomNationalId؛ بدون نقل‌قول literal) در mask.ts/normalize.test.ts/users.types.test.ts + توسعه allowlist گیت‌لیکس برای فرم‌های +98/0098 همان بازه مصنوعی؛ gitleaks working-tree تمیز. **معوقه:** بازنویسی تاریخچه محلی برای حذف literalهای قدیمی از Commitهای push‌نشده — منتظر تایید مالک (پیشنهاد در گزارش T08).
+- [۱۴۰۵/۰۸/۲۹ | 156a698 | F1-03 T07] Seed توسعه (U16): `src/db/seed/dev-seed.ts` با guard داخل runDevSeed (NODE_ENV=development اجباری — unset هم رد می‌شود — + host محلی برای هر دو URL)؛ tenant به‌عنوان owner، همه نوشتن users از طریق UsersRepository/TenantContext به‌عنوان نقش Runtime؛ idempotent؛ خارج از build/Docker/CI. ۱۰ تست ادغام (رد، idempotency، national_id=NULL، رمزنگاری+AAD، خوانش RLS). بازبینی امنیتی: APPROVE.
 - [۱۴۰۵/۰۸/۲۹ | 332ce7f | F1-03 T06] `UsersRepository` (U15): create/findById/findByUsername/findByPhone/assignRole/revokeRole/listRoles/softDelete فقط از طریق TenantDb + PiiService؛ بدون HTTP، بدون نوشتن national_id (Q3)؛ ترجمه SQLSTATE به DomainError (23505→conflict، 23503→badInput، بقیه→internal بدون لو رفتن متن SQL)؛ `src/db/sql.ts` re-export عملگرهای drizzle برای حفظ مرز D11. **+ اصلاح امنیتی فیلتر (تصمیم مالک، گزینه A):** `details` فقط برای خطای <500 در پاسخ HTTP می‌آید؛ برای 5xx فقط لاگ با request id (پیش از این `pgCode` به کلاینت لو می‌رفت). نتیجه: ۱۱۵ واحد + ۵۷ ادغام سبز.
 - [۱۴۰۵/۰۸/۲۹ | a93dfc6 | F1-03 T05b] کاهش کاتالوگ نقش‌ها به ۳ نقش (تصمیم مالک): Migration سفارشی 0004 (guard در برابر ارجاع user_roles + حذف PLATFORM_ADMIN/CARRIER_OPERATOR/AUDITOR + توضیح جدید CARRIER_ADMIN)؛ تست‌ها به ۳ نقش به‌روز شدند (سناریوی CHECK پلتفرم همچنان 23514 را اثبات می‌کند)؛ اصلاحیه ADR-006، PRD §۲ و BR-16، rls.md؛ OD-37 بسته شد.
 - [۱۴۰۵/۰۸/۲۹ | 1907d3d | F1-03 T05] سوئیت ایزولاسیون `users`/`user_roles` (۱۱ سناریوی جدید به‌عنوان `bitabar_app`: fail-closed، IDOR، 42501، حذف نرم، رد FK/CHECK/scope جعلی، یکتایی phone_hash per-tenant + استفاده مجدد پس از حذف نرم، CHECKهای U12، خالی‌بودن national_id) + guard سخت‌گیرانه U14 با allowlist و کنترل منفی. Fixtureها از مسیر واقعی PII. نتیجه: ۱۰۰ واحد + ۴۴ ادغام سبز.
@@ -48,7 +51,7 @@
 
 ## ۵. در حال انجام / بعدی
 
-- F1-03 در حال انجام: T01–T06 Commit محلی شدند. بعدی: T07 (Seed — ۳ نقش، طبق U16: فقط dev، idempotent، داده مصنوعی)، سپس T08 (جمع‌بندی + رفع تست flaky). **Push/Tag فقط با اجازه مالک.**
+- F1-03 کامل و بسته شد (T01–T08). بعدی: **F1-04 احراز هویت** — با تایید مالک شروع می‌شود؛ الزام §۶ درباره پاسخ/زمان‌بندی یکسان ورود (عدم شمارش کاربر) را در طراحی F1-04 لحاظ کن. **Push/Tag فقط با اجازه مالک.**
 
 ## ۶. پرسش‌های باز و فرض‌ها (برای مالک)
 
@@ -68,7 +71,7 @@
 - دانلود از registry.npmjs.org روی این شبکه کند/ناپایدار است (retry).
 - **docker.io برای Pull جدید 403 می‌دهد** (شبکه ایران): راه‌حل = Pull از `docker.arvancloud.ir/<image>` سپس `docker tag` به نام اصلی (برای `testcontainers/ryuk:0.14.0` و `zricethezav/gitleaks:v8.28.0` انجام و کش شد).
 - ریسک بسته‌شده در T09: handle تراکنشِ نگه‌داری‌شده پس از پایان `TenantDb.run` می‌توانست روی connection استفاده‌مجددشده داخل تراکنش Tenant دیگر اجرا شود؛ با Proxy محافظ در `tenant-db.ts` بسته شد (تست leak در `test/rls.int.test.ts`).
-- **بدهی T08:** یک تست واحد به‌صورت متناوب (۴ مشاهده تا ۱۴۰۵/۰۸/۲۹) Fail می‌شود؛ مظنون‌ها: ساخت نمونه ESLint در `eslint-boundary.test.ts`، رقابت workerهای turbo/vitest، یا timeout. ریشه‌یابی توسط Subagent در T07 انجام و اصلاح در T08 اعمال می‌شود.
+- **بدهی T08:** یک تست واحد به‌صورت متناوب (۴ مشاهده تا ۱۴۰۵/۰۸/۲۹) Fail می‌شود؛ مظنون‌ها: ساخت نمونه ESLint در `eslint-boundary.test.ts`، رقابت workerهای turbo/vitest، یا timeout. ریشه‌یابی توسط Subagent در T07 انجام و اصلاح در T08 اعمال می‌شود. → **حل شد در T08:** ریشه = بار یک‌باره lazy لود flat-config/pلاگین‌های ESLint داخل اولین lintText تحت رقابت CPU؛ اصلاح: warm-up در beforeAll (۶۰s) + maxWorkers=4 + turbo --concurrency=2؛ ۲۰/۲۰ اجرا سبز.
 
 ## ۸. دستورهای مهم (اجرا، تست، Migration، Seed، Deploy)
 
@@ -82,4 +85,4 @@
 
 ## ۹. وضعیت امنیت و بنچمارک (آخرین نتیجه + لینک گزارش)
 
-- ایزولاسیون Tenant (F1-02 + F1-03 T05): سوئیت RLS **۲۵/۲۵ سبز** + مهاجرت ۷/۷ (کاتالوگ ۳ نقش، نام‌های فارسی بایت‌محور) — ۴۴ تست ادغام سبز، ۱۴۰۵/۰۸/۲۹. gitleaks: بدون نشتی. ممیزی امنیتی کامل و بنچمارک در فاز F7.
+- ایزولاسیون Tenant (F1-02 + F1-03): سوئیت RLS سبز + UsersRepository/Seed از مسیر واقعی RLS+PII — **۱۱۵ تست واحد + ۶۶ تست ادغام سبز** (۱۴۰۵/۰۸/۲۹). gitleaks working-tree: تمیز (T08)؛ تاریخچه git محلی هنوز literalهای قدیمی را دارد تا تایید بازنویسی (§۴/T08). ممیزی امنیتی کامل و بنچمارک در فاز F7.
