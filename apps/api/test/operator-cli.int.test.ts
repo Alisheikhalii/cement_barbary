@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Pool } from 'pg';
@@ -210,7 +210,9 @@ describe('operator CLI (T08)', () => {
   it('creates a driver with a numeric PIN that satisfies the PIN policy', async () => {
     const code = `cli-${randomBytes(3).toString('hex')}`;
     await createTenant(owner, code);
-    const phone = `0912000${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    // Built at runtime from the gitleaks-allowlisted synthetic prefix, so no
+    // out-of-range phone literal exists in the source.
+    const phone = `0912000000${randomInt(1, 10)}`;
     const captureOut = capture();
 
     const exitCode = await runCreateUser(
