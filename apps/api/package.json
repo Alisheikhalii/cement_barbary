@@ -15,7 +15,9 @@
     "db:check": "drizzle-kit check",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:prod": "node dist/db/migrate.js",
-    "db:seed:dev": "tsx src/db/seed/dev-seed.ts"
+    "db:seed:dev": "tsx src/db/seed/dev-seed.ts",
+    "cli:create-user": "tsx src/cli/create-user.ts",
+    "cli:reset-password": "tsx src/cli/reset-password.ts"
   },
   "dependencies": {
     "@bitabar/shared": "workspace:*",

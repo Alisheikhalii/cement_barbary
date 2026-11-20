@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { inject } from 'vitest';
 import { describe, expect, it } from 'vitest';
 
+import { parseEnv } from '../src/config/env.js';
 import {
   assertDevSeedAllowed,
   DEV_SEED_TENANT,
@@ -15,6 +16,7 @@ import {
 import * as schema from '../src/db/schema/index.js';
 import { TenantContext } from '../src/db/tenant-context.js';
 import { TenantDb } from '../src/db/tenant-db.js';
+import { PasswordService } from '../src/modules/auth/password.service.js';
 import { UsersRepository } from '../src/modules/users/users.repository.js';
 import { buildAad } from '../src/security/pii/pii-crypto.js';
 import { ownerPool, testPii } from './setup/db.js';
@@ -28,12 +30,19 @@ import { ownerPool, testPii } from './setup/db.js';
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const API_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
+function testConfig() {
+  return parseEnv({ ...process.env, DATABASE_URL: inject('appUrl') });
+}
+
 function seedDeps() {
+  const config = testConfig();
   return {
     nodeEnv: 'development' as const,
     ownerUrl: inject('ownerUrl'),
     appUrl: inject('appUrl'),
     pii: testPii(),
+    passwords: new PasswordService(config),
+    tempPasswordTtlHours: config.auth.tempPasswordTtlHours,
   };
 }
 
@@ -88,6 +97,8 @@ describe('dev seed guard (refusal)', () => {
         ownerUrl: 'postgres://127.0.0.1:1/db',
         appUrl: 'postgres://127.0.0.1:1/db',
         pii: testPii(),
+        passwords: new PasswordService(testConfig()),
+        tempPasswordTtlHours: 24,
       }),
     ).rejects.toThrow(/NODE_ENV/);
     await expect(
@@ -96,6 +107,8 @@ describe('dev seed guard (refusal)', () => {
         ownerUrl: 'postgres://127.0.0.1:1/db',
         appUrl: 'postgres://127.0.0.1:1/db',
         pii: testPii(),
+        passwords: new PasswordService(testConfig()),
+        tempPasswordTtlHours: 24,
       }),
     ).rejects.toThrow(/NODE_ENV/);
   });
@@ -136,11 +149,14 @@ describe('dev seed against a real database', () => {
     const first = await runDevSeed(seedDeps());
     expect(first.created).toBe(3);
     expect(first.skipped).toBe(0);
+    expect(first.credentials).toHaveLength(3);
 
     const second = await runDevSeed(seedDeps());
     expect(second.tenantId).toBe(first.tenantId);
     expect(second.created).toBe(0);
     expect(second.skipped).toBe(3);
+    // Idempotent credentials: a re-run never rotates an existing password.
+    expect(second.credentials).toHaveLength(0);
 
     const { rows: userRows } = await ownerPool().query<{ count: string }>(
       'SELECT count(*)::text AS count FROM users WHERE tenant_id = $1',
@@ -152,6 +168,55 @@ describe('dev seed against a real database', () => {
     );
     expect(userRows[0]?.count).toBe('3');
     expect(linkRows[0]?.count).toBe('3');
+  });
+
+  it('seeds one-time credentials: Argon2id hash only, forced change and an expiry', async () => {
+    // Earlier tests in this file may already have seeded credentials; this
+    // test needs the freshly issued ones to verify the plaintext round-trip.
+    await ownerPool().query(
+      `DELETE FROM user_credentials
+        WHERE tenant_id = (SELECT id FROM tenants WHERE code = $1)`,
+      [DEV_SEED_TENANT.code],
+    );
+    const result = await runDevSeed(seedDeps());
+    expect(result.credentials).toHaveLength(3);
+    const { rows } = await ownerPool().query<{
+      username: string | null;
+      password_hash: string;
+      must_change_password: boolean;
+      temporary_password_expires_at: Date | null;
+    }>(
+      `SELECT u.username, c.password_hash, c.must_change_password,
+              c.temporary_password_expires_at
+         FROM user_credentials c
+         JOIN users u ON u.tenant_id = c.tenant_id AND u.id = c.user_id
+        WHERE c.tenant_id = $1`,
+      [result.tenantId],
+    );
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row.password_hash.startsWith('$argon2id$')).toBe(true);
+      expect(row.must_change_password).toBe(true);
+      expect(row.temporary_password_expires_at).not.toBeNull();
+    }
+    // The generated plaintext verifies through the real password service, and
+    // the same value is never stored anywhere in the row.
+    const config = testConfig();
+    const passwords = new PasswordService(config);
+    for (const credential of result.credentials) {
+      expect(credential.password.length).toBeGreaterThanOrEqual(8);
+      expect(rows.some((row) => row.password_hash.includes(credential.password))).toBe(false);
+    }
+    const operator = result.credentials.find((entry) => entry.role === 'FACTORY_OPERATOR');
+    if (operator === undefined) {
+      throw new Error('seeded operator credential missing');
+    }
+    const operatorHash = rows.find((row) => row.username === 'dev.operator')?.password_hash;
+    if (operatorHash === undefined) {
+      throw new Error('seeded credential row missing');
+    }
+    const verifies = await passwords.verify(operatorHash, operator.password);
+    expect(verifies).toBe(true);
   });
 
   it('stores phones encrypted (never plaintext), national_id columns stay NULL', async () => {

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { DomainError } from '../../common/errors/domain-error.js';
 import { authSessions } from '../../db/schema/auth-sessions.js';
 import { tenants } from '../../db/schema/tenants.js';
 import { userCredentials } from '../../db/schema/user-credentials.js';
@@ -39,6 +40,22 @@ export class AuthRepository {
     return this.tenantContext.require().tenantId;
   }
 
+  /**
+   * Credential writes can fail with raw PG errors whose message embeds SQL
+   * parameters (a hash). Operator tooling prints Error.message, so translate
+   * anything unexpected into a parameter-free DomainError (T08 review M3).
+   */
+  private async runGuarded<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      throw DomainError.internal();
+    }
+  }
+
   /** A2: a successful login clears the delay counters. */
   async resetFailures(userId: string): Promise<void> {
     const tenantId = this.tenantId();
@@ -47,6 +64,79 @@ export class AuthRepository {
         .update(userCredentials)
         .set({ failedAttempts: 0, nextAttemptAt: null })
         .where(and(eq(userCredentials.tenantId, tenantId), eq(userCredentials.userId, userId))),
+    );
+  }
+
+  /**
+   * A19 operator tooling: stores the first one-time password. Always sets
+   * `must_change_password` and the expiry together (the CHECK keeps them in
+   * sync). Callers hash the password with PasswordService first.
+   */
+  async createCredentials(userId: string, passwordHash: string, expiresAt: Date): Promise<void> {
+    const tenantId = this.tenantId();
+    await this.runGuarded(() =>
+      this.tenantDb.run((tx) =>
+        tx.insert(userCredentials).values({
+          tenantId,
+          userId,
+          passwordHash,
+          mustChangePassword: true,
+          temporaryPasswordExpiresAt: expiresAt,
+        }),
+      ),
+    );
+  }
+
+  /**
+   * A19 operator reset: replaces the stored hash with a fresh one-time
+   * password, forces a change, resets the delay counters and revokes every
+   * live session — one transaction. Returns false when the user has no
+   * credential row (nothing was written).
+   */
+  async setOneTimePassword(
+    userId: string,
+    expectedPasswordHash: string,
+    passwordHash: string,
+    expiresAt: Date,
+  ): Promise<boolean> {
+    const tenantId = this.tenantId();
+    const now = new Date();
+    return this.runGuarded(() =>
+      this.tenantDb.run(async (tx) => {
+        // Compare-and-swap on the hash the operator saw: two concurrent
+        // resets cannot both succeed, so a printed password is never dead on
+        // arrival (T08 review LOW 7).
+        const updated = await tx
+          .update(userCredentials)
+          .set({
+            passwordHash,
+            mustChangePassword: true,
+            temporaryPasswordExpiresAt: expiresAt,
+            failedAttempts: 0,
+            nextAttemptAt: null,
+          })
+          .where(
+            and(
+              eq(userCredentials.tenantId, tenantId),
+              eq(userCredentials.userId, userId),
+              eq(userCredentials.passwordHash, expectedPasswordHash),
+            ),
+          );
+        if ((updated.rowCount ?? 0) === 0) {
+          return false;
+        }
+        await tx
+          .update(authSessions)
+          .set({ revokedAt: now, revokeReason: 'password_reset' })
+          .where(
+            and(
+              eq(authSessions.tenantId, tenantId),
+              eq(authSessions.userId, userId),
+              isNull(authSessions.revokedAt),
+            ),
+          );
+        return true;
+      }),
     );
   }
 

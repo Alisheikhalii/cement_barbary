@@ -63,8 +63,11 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
 - **A12 — CSRF:** SameSite=Lax **plus** an Origin / `Sec-Fetch-Site` check on the cookie endpoints;
   the access token never rides a cookie.
 - **A13 — Secrets from env only:** `AUTH_TOKEN_SECRET` (base64 → 32–64 random bytes), startup-checked
-  distinct from both PII keys; seed passwords from `DEV_SEED_OPERATOR/CARRIER/DRIVER_PASSWORD`
-  with no defaults; `.env.example` holds placeholders only.
+  distinct from both PII keys; `.env.example` holds placeholders only. **Owner amendment (T08,
+  2026-11-20):** the dev seed no longer reads `DEV_SEED_*_PASSWORD`; it generates a crypto-random
+  one-time password per seeded account (`must_change_password = true`, 24 h expiry) and prints it
+  once on stdout. The same rule applies to the operator CLI — a password is never supplied via env,
+  argv, a file or shell history.
 - **A14 — Logging hygiene:** pino key-based redaction extended to passwords, tokens, cookie/auth
   headers and the future OTP keys; no password, token or phone in logs, error messages or test
   snapshots; error messages never echo the identifier.

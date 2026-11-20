@@ -1,3 +1,4 @@
+import { randomBytes, randomInt } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -7,6 +8,9 @@ import { z } from 'zod';
 
 import { parseEnv } from '../../config/env.js';
 import { loadEnvFiles } from '../../config/load-env.js';
+import { AuthRepository } from '../../modules/auth/auth.repository.js';
+import { PasswordService } from '../../modules/auth/password.service.js';
+import { checkPasswordPolicy, passwordKindForRoles } from '../../modules/auth/password-policy.js';
 import { UsersRepository } from '../../modules/users/users.repository.js';
 import type { AssignableRole } from '../../modules/users/users.types.js';
 import { PiiService } from '../../security/pii/pii-crypto.js';
@@ -22,9 +26,12 @@ import { TenantDb } from '../tenant-db.js';
  *   src/db/seed/**), never in any Docker image (apps/api/.dockerignore).
  * - Synthetic data only: one fake tenant, one user per role of the 3-role
  *   catalog, phones only from the gitleaks-allowlisted range, NO national IDs
- *   (owner Q3), NO passwords (there is no password column; F1-04).
+ *   (owner Q3). F1-04 T08: every seeded account gets a crypto-random
+ *   one-time password with `must_change_password = true` and the configured
+ *   expiry; it is printed once on stdout and never stored in plaintext.
  * - Idempotent: a second run creates nothing (upsert by tenant code, lookup by
- *   username/phone before create, role assignment is a no-op on conflict).
+ *   username/phone before create, role assignment is a no-op on conflict);
+ *   credentials are created only when absent, so a re-run cannot rotate them.
  * - Tenant row is created by the MIGRATION OWNER (INSERT on tenants is revoked
  *   from the runtime role, U4); every USERS write goes through UsersRepository
  *   under TenantContext as the runtime role — never raw SQL (owner T07 rule).
@@ -95,12 +102,32 @@ export interface DevSeedDeps {
   /** Runtime-role connection (bitabar_app): every users write via UsersRepository. */
   readonly appUrl: string;
   readonly pii: PiiService;
+  readonly passwords: PasswordService;
+  /** A19 TTL for the generated one-time passwords. */
+  readonly tempPasswordTtlHours: number;
 }
 
 export interface DevSeedResult {
   readonly tenantId: string;
   readonly created: number;
   readonly skipped: number;
+  /** Newly created credentials only — printed once by main(); never persisted. */
+  readonly credentials: readonly { login: string; role: AssignableRole; password: string }[];
+}
+
+/** Crypto-random one-time password that satisfies the role's A20 policy. */
+function generateOneTimePassword(role: AssignableRole, identifier: string): string {
+  const kind = passwordKindForRoles([role]);
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const candidate =
+      kind === 'driver-pin'
+        ? Array.from({ length: 10 }, () => randomInt(0, 10)).join('')
+        : randomBytes(15).toString('base64url');
+    if (checkPasswordPolicy(kind, candidate, identifier) === null) {
+      return candidate;
+    }
+  }
+  throw new Error('dev seed failed: could not generate a policy-compliant password');
 }
 
 /** Runs the seed. Idempotent: re-running creates no duplicates. Guarded: refuses before opening any connection. */
@@ -126,38 +153,54 @@ export async function runDevSeed(deps: DevSeedDeps): Promise<DevSeedResult> {
 
     // The real app path: TenantContext + TenantDb + UsersRepository + PiiService.
     const tenantContext = new TenantContext();
-    const users = new UsersRepository(
-      new TenantDb(drizzle(appPool, { schema })),
-      tenantContext,
-      deps.pii,
-    );
+    const tenantDb = new TenantDb(drizzle(appPool, { schema }));
+    const users = new UsersRepository(tenantDb, tenantContext, deps.pii);
+    const credentials = new AuthRepository(tenantDb, tenantContext, deps.pii);
 
     let created = 0;
     let skipped = 0;
+    const issued: { login: string; role: AssignableRole; password: string }[] = [];
     for (const entry of DEV_SEED_USERS) {
-      await tenantContext.run({ tenantId }, async () => {
-        const existing =
-          entry.username !== undefined
-            ? await users.findByUsername(entry.username)
-            : await users.findByPhone(entry.phone);
-        let userId: string;
-        if (existing) {
-          skipped += 1;
-          userId = existing.id;
-        } else {
-          const dto = await users.create(
+      // One transaction per user: user + role + first credential land together
+      // (an interruption must not strand an account without credentials).
+      await tenantContext.run({ tenantId }, () =>
+        tenantDb.run(async () => {
+          const existing =
             entry.username !== undefined
-              ? { username: entry.username, displayName: entry.displayName, phone: entry.phone }
-              : { displayName: entry.displayName, phone: entry.phone },
-          );
-          created += 1;
-          userId = dto.id;
-        }
-        // Idempotent by design (onConflictDoNothing in the repository).
-        await users.assignRole(userId, entry.role);
-      });
+              ? await users.findByUsername(entry.username)
+              : await users.findByPhone(entry.phone);
+          let userId: string;
+          if (existing) {
+            skipped += 1;
+            userId = existing.id;
+          } else {
+            const dto = await users.create(
+              entry.username !== undefined
+                ? { username: entry.username, displayName: entry.displayName, phone: entry.phone }
+                : { displayName: entry.displayName, phone: entry.phone },
+            );
+            created += 1;
+            userId = dto.id;
+          }
+          // Idempotent by design (onConflictDoNothing in the repository).
+          await users.assignRole(userId, entry.role);
+
+          // A19: first credentials only; a re-run never rotates an existing one.
+          if ((await credentials.getCredentials(userId)) === null) {
+            const login =
+              entry.username !== undefined
+                ? `${entry.username}@${DEV_SEED_TENANT.code}`
+                : entry.phone;
+            const password = generateOneTimePassword(entry.role, login);
+            const passwordHash = await deps.passwords.hash(password);
+            const expiresAt = new Date(Date.now() + deps.tempPasswordTtlHours * 3_600_000);
+            await credentials.createCredentials(userId, passwordHash, expiresAt);
+            issued.push({ login, role: entry.role, password });
+          }
+        }),
+      );
     }
-    return { tenantId, created, skipped };
+    return { tenantId, created, skipped, credentials: issued };
   } finally {
     await appPool.end();
     await ownerPool.end();
@@ -194,10 +237,19 @@ async function main(): Promise<void> {
       ownerUrl: ownerEnv.data.DATABASE_MIGRATION_URL,
       appUrl: config.database.url,
       pii: new PiiService(config.pii),
+      passwords: new PasswordService(config),
+      tempPasswordTtlHours: config.auth.tempPasswordTtlHours,
     });
     process.stdout.write(
       `dev seed ok: tenant=${DEV_SEED_TENANT.code} created=${result.created} skipped=${result.skipped}\n`,
     );
+    if (result.credentials.length > 0) {
+      process.stdout.write('One-time passwords (shown once, never stored in plaintext):\n');
+      for (const entry of result.credentials) {
+        process.stdout.write(`  ${entry.role} ${entry.login}: ${entry.password}\n`);
+      }
+      process.stdout.write('Each account must change its password at first login.\n');
+    }
   } catch (error) {
     process.stderr.write(`dev seed failed: ${(error as Error).message}\n`);
     process.exit(1);
