@@ -20,7 +20,9 @@ export type PasswordKind = 'staff' | 'driver-pin';
 
 /** A20: an account with any non-DRIVER role follows the staff rule. */
 export function passwordKindForRoles(roles: readonly AssignableRole[]): PasswordKind {
-  return roles.some((role) => role !== 'DRIVER') ? 'staff' : 'driver-pin';
+  // Fail closed: an account with no roles gets the stricter staff rule, never
+  // the short numeric PIN rule.
+  return roles.length === 0 || roles.some((role) => role !== 'DRIVER') ? 'staff' : 'driver-pin';
 }
 
 /** All-same-digit PINs, lengths 8–12 (longer ones are caught by isAllSameDigit). */

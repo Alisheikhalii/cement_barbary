@@ -160,7 +160,11 @@ describe('parseEnv auth config (ADR-007, F1-04)', () => {
     const config = parseEnv({ ...BASE_ENV });
     expect(config.auth.argon2).toEqual({ memoryKiB: 19456, time: 2, parallelism: 1 });
     expect(config.auth.loginDelay).toEqual({ baseSeconds: 1, maxSeconds: 300 });
-    expect(config.auth.rateLimit).toEqual({ loginIpPerMinute: 20, loginTenantPerMinute: 60 });
+    expect(config.auth.rateLimit).toEqual({
+      loginIpPerMinute: 20,
+      loginAccountPerMinute: 10,
+      loginTenantPerMinute: 60,
+    });
     expect(config.auth.accessTokenTtlSeconds).toBe(600);
     expect(config.auth.tempPasswordTtlHours).toBe(24);
   });

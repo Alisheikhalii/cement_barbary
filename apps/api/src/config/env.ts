@@ -89,6 +89,7 @@ const envSchema = z
     AUTH_LOCK_MAX_SECONDS: z.coerce.number().int().min(10).max(3600).default(300),
     // A11: login rate limits (fixed 60 s windows; per-account delay is A2, not these).
     AUTH_RL_LOGIN_IP_PER_MIN: z.coerce.number().int().min(1).max(10000).default(20),
+    AUTH_RL_LOGIN_ACCOUNT_PER_MIN: z.coerce.number().int().min(1).max(1000).default(10),
     AUTH_RL_LOGIN_TENANT_PER_MIN: z.coerce.number().int().min(1).max(100000).default(60),
     // A7/A13: HS256 key (base64 of 32–64 random bytes, distinct from PII keys).
     AUTH_TOKEN_SECRET: tokenSecretSchema,
@@ -166,6 +167,8 @@ export interface AppConfig {
     /** A11: fixed-window login limits (60 s windows). */
     rateLimit: {
       loginIpPerMinute: number;
+      /** Per hashed identifier (unknown identifiers get the same bucket). */
+      loginAccountPerMinute: number;
       loginTenantPerMinute: number;
     };
     /** A7: HS256 signing key — 32–64 bytes, distinct from the PII keys. */
@@ -214,6 +217,7 @@ export function parseEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
       },
       rateLimit: {
         loginIpPerMinute: parsed.data.AUTH_RL_LOGIN_IP_PER_MIN,
+        loginAccountPerMinute: parsed.data.AUTH_RL_LOGIN_ACCOUNT_PER_MIN,
         loginTenantPerMinute: parsed.data.AUTH_RL_LOGIN_TENANT_PER_MIN,
       },
       tokenSecret: parsed.data.AUTH_TOKEN_SECRET,

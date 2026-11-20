@@ -23,9 +23,25 @@ export class DomainError extends Error {
     return new DomainError('CONFLICT', 'این مقدار قبلاً ثبت شده است', 409, details);
   }
 
-  /** Missing/invalid credentials or token — 401. Never says which part failed (A3). */
+  /** Missing/invalid bearer token — 401. Never says which part failed (A3). */
   static unauthorized(): DomainError {
     return new DomainError('UNAUTHORIZED', 'احراز هویت نامعتبر است', 401);
+  }
+
+  /**
+   * The single generic credential failure (A3): unknown tenant/user/phone,
+   * malformed identifier, wrong password, delayed, disabled, expired temp
+   * password — identical status, code, message and shape. Never a reason.
+   */
+  static invalidCredentials(): DomainError {
+    return new DomainError('INVALID_CREDENTIALS', 'اطلاعات ورود نامعتبر است', 401);
+  }
+
+  /** 429 with Retry-After (A11). Carries only the wait time, never bucket details. */
+  static tooManyRequests(retryAfterSeconds: number): DomainError {
+    return new DomainError('TOO_MANY_REQUESTS', 'تعداد درخواست‌ها بیش از حد مجاز است', 429, {
+      retryAfterSeconds,
+    });
   }
 
   /** Unexpected internal failure (e.g. an untranslated DB error) — 500. Message and details never echo input data. */

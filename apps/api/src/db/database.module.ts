@@ -1,8 +1,10 @@
 import { Global, Module } from '@nestjs/common';
 
 import { AuthLookupService } from './auth-lookup.service.js';
+import { CredentialFailureStore } from './credential-failure-store.js';
 import { databaseProviders, DB, PG_POOL } from './database.providers.js';
 import { DbHealth } from './db-health.js';
+import { RateLimitStore } from './rate-limit-store.js';
 import { TenantContext } from './tenant-context.js';
 import { TenantDb } from './tenant-db.js';
 
@@ -13,7 +15,24 @@ import { TenantDb } from './tenant-db.js';
  */
 @Global()
 @Module({
-  providers: [...databaseProviders, DbHealth, TenantContext, TenantDb, AuthLookupService],
-  exports: [PG_POOL, DB, DbHealth, TenantContext, TenantDb, AuthLookupService],
+  providers: [
+    ...databaseProviders,
+    DbHealth,
+    TenantContext,
+    TenantDb,
+    AuthLookupService,
+    RateLimitStore,
+    CredentialFailureStore,
+  ],
+  exports: [
+    PG_POOL,
+    DB,
+    DbHealth,
+    TenantContext,
+    TenantDb,
+    AuthLookupService,
+    RateLimitStore,
+    CredentialFailureStore,
+  ],
 })
 export class DatabaseModule {}

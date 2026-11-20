@@ -98,6 +98,37 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
   digits plus a ~100-entry common-PIN blocklist; never equal to the login identifier; dual-role
   accounts follow the staff rule.
 
+**T06/T07 implementation decisions (owner checkpoint 4):**
+
+- **Rate-limit key hygiene.** Per-account (`AUTH_RL_LOGIN_ACCOUNT_PER_MIN`, 10/min) and per-tenant
+  buckets are HMAC-SHA256 of the identifier with a domain-separated `PII_HMAC_KEY`; only the IP
+  bucket is raw (a counter dimension, not an account). Unknown identifiers get the same buckets as
+  known ones, so a 429 never reveals existence.
+- **Timing-equal failure bookkeeping.** A real wrong password must persist the A2 counter; every
+  path that must not (unknown tenant/user/phone, delayed, expired temp password, disabled) runs the
+  same no-op transaction. The counter update uses `SET LOCAL synchronous_commit = off` — delay
+  counters are best-effort anti-brute-force state, and without that the real path paid one extra
+  durable commit (~55 ms on the reference CI host) and became a timing oracle. Test: 200 samples
+  per failure kind, medians/p95 within max(50 ms, 20 %) / max(100 ms, 40 %).
+- **CSRF (refresh/logout).** Custom header `X-Bitabar-CSRF: 1` PLUS Origin-allowlist match (when
+  Origin is sent) or `Sec-Fetch-Site: same-origin` (when only that is sent). A custom header cannot
+  be attached cross-origin without a preflighted CORS grant, and the check runs before the cookie is
+  read, so valid and invalid cookies answer the same 403. Alternatives rejected: double-submit
+  cookie (another cookie to manage, no benefit under a strict allowlist) and origin-only checks
+  (older clients omit Origin).
+- **Forced change single use.** The change token carries `chg`, a domain-separated SHA-256 of the
+  stored PHC string. Any password change or operator reset invalidates it; the repository applies
+  the new hash with a compare-and-swap on the verified hash, so two concurrent changes cannot both
+  succeed.
+- **BR-18 atomicity.** The new driver session and the sibling revocation run in one transaction,
+  serialized by `SELECT … FOR UPDATE` on the user row; parallel driver logins therefore leave
+  exactly one live session.
+- **Review fixes (pre-commit).** A20's identifier-equality rule checks every form of the identifier
+  (username, `username@tenant-code`, normalized phone; role-less accounts take the staff rule).
+  Password change re-checks account/tenant activity, is throttled per account, and rejects
+  non-JSON login bodies (login-CSRF via an HTML form). Disabled accounts with a wrong password pay
+  the same dummy bookkeeping transaction as an active failure.
+
 **Alternatives considered:**
 
 - Redis for rate limiting — deferred (Q2): the Postgres table sits behind the `RateLimiter`

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { DomainError } from '../../common/errors/domain-error.js';
 import { authSessions } from '../../db/schema/auth-sessions.js';
+import { users } from '../../db/schema/users.js';
 import { and, eq, gt, isNull, ne } from '../../db/sql.js';
 import { TenantContext } from '../../db/tenant-context.js';
 import { TenantDb, type Tx } from '../../db/tenant-db.js';
@@ -54,10 +55,27 @@ export class SessionRepository {
     return this.tenantContext.require().tenantId;
   }
 
-  /** Inserts a session row (the token itself never reaches the database). */
-  async create(input: NewSession): Promise<{ readonly id: string }> {
+  /**
+   * Inserts a session row (the token itself never reaches the database). With
+   * `revokeOtherSessions`, the user row is locked FOR UPDATE first and every
+   * other live session is revoked in the SAME transaction — BR-18 (A10). The
+   * lock is what makes concurrent driver logins serialize: the second login
+   * waits, then sees and revokes the first session, so exactly one survives.
+   */
+  async create(
+    input: NewSession,
+    options: { readonly revokeOtherSessions?: boolean } = {},
+  ): Promise<{ readonly id: string }> {
     const tenantId = this.tenantId();
+    const exclusive = options.revokeOtherSessions === true;
     return this.tenantDb.run(async (tx) => {
+      if (exclusive) {
+        await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.tenantId, tenantId), eq(users.id, input.userId)))
+          .for('update');
+      }
       const rows = await tx
         .insert(authSessions)
         .values({
@@ -73,6 +91,19 @@ export class SessionRepository {
       const row = rows[0];
       if (!row) {
         throw DomainError.internal();
+      }
+      if (exclusive) {
+        await tx
+          .update(authSessions)
+          .set({ revokedAt: new Date(), revokeReason: 'sibling' })
+          .where(
+            and(
+              eq(authSessions.tenantId, tenantId),
+              eq(authSessions.userId, input.userId),
+              ne(authSessions.id, row.id),
+              isNull(authSessions.revokedAt),
+            ),
+          );
       }
       return { id: row.id };
     });

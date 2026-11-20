@@ -8,6 +8,9 @@ import { parseEnv, type AppConfig } from '../../config/env.js';
 import {
   ACCESS_TOKEN_AUDIENCE,
   ACCESS_TOKEN_ISSUER,
+  credentialFingerprint,
+  PASSWORD_CHANGE_TOKEN_AUDIENCE,
+  PASSWORD_CHANGE_TOKEN_TTL_SECONDS,
   TokenService,
   type AccessTokenInput,
 } from './token.service.js';
@@ -233,5 +236,89 @@ describe('TokenService.verifyAccessToken — claims and time', () => {
       expect(err).toMatchObject({ code: 'UNAUTHORIZED', statusCode: 401 });
       expect((err as Error).message).not.toMatch(/signature|jwt|algorithm|expired/i);
     }
+  });
+});
+
+describe('password-change token (A19)', () => {
+  const fingerprint = credentialFingerprint('$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA');
+
+  it('signs exactly the documented claims with its own audience and 300 s TTL', async () => {
+    const token = await service.signPasswordChangeToken({
+      userId: INPUT.userId,
+      tenantId: INPUT.tenantId,
+      fingerprint,
+    });
+    const payload = decodeJwt(token);
+    expect(Object.keys(payload).sort()).toEqual(
+      ['aud', 'chg', 'exp', 'iat', 'iss', 'jti', 'sub', 'tid'].sort(),
+    );
+    expect(payload).toMatchObject({
+      sub: INPUT.userId,
+      tid: INPUT.tenantId,
+      chg: fingerprint,
+      aud: PASSWORD_CHANGE_TOKEN_AUDIENCE,
+    });
+    expect(num(payload.exp) - num(payload.iat)).toBe(PASSWORD_CHANGE_TOKEN_TTL_SECONDS);
+    await expect(service.verifyPasswordChangeToken(token)).resolves.toMatchObject({
+      sub: INPUT.userId,
+      tid: INPUT.tenantId,
+      chg: fingerprint,
+    });
+  });
+
+  it('is not interchangeable with an access token, in either direction', async () => {
+    const access = await service.signAccessToken(INPUT);
+    const change = await service.signPasswordChangeToken({
+      userId: INPUT.userId,
+      tenantId: INPUT.tenantId,
+      fingerprint,
+    });
+    await expect(service.verifyPasswordChangeToken(access)).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+    await expect(service.verifyAccessToken(change)).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
+
+  it('rejects a tampered fingerprint claim', async () => {
+    const token = await service.signPasswordChangeToken({
+      userId: INPUT.userId,
+      tenantId: INPUT.tenantId,
+      fingerprint,
+    });
+    const [head, , sig] = token.split('.') as [string, string, string];
+    const forged = b64({ ...decodeJwt(token), chg: credentialFingerprint('other') });
+    await expect(
+      service.verifyPasswordChangeToken(`${head}.${forged}.${sig}`),
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+
+  it('rejects an expired change token', async () => {
+    const iat = now() - 3600;
+    const token = await new SignJWT({
+      tid: INPUT.tenantId,
+      chg: fingerprint,
+      iss: ACCESS_TOKEN_ISSUER,
+      aud: PASSWORD_CHANGE_TOKEN_AUDIENCE,
+      iat,
+      exp: iat + 60,
+      jti: uuidv7(),
+      sub: INPUT.userId,
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .sign(new Uint8Array(KEY));
+    await expect(service.verifyPasswordChangeToken(token)).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+  });
+
+  it('credentials fingerprint is deterministic, domain-separated and changes with the hash', () => {
+    const a = credentialFingerprint('$argon2id$v=19$m=19456,t=2,p=1$a$b');
+    const b = credentialFingerprint('$argon2id$v=19$m=19456,t=2,p=1$a$c');
+    expect(a).toBe(credentialFingerprint('$argon2id$v=19$m=19456,t=2,p=1$a$b'));
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(a).not.toContain('argon2id');
   });
 });

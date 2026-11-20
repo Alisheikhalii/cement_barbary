@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { AuthLookupService } from '../../db/auth-lookup.service.js';
 import { TenantContext } from '../../db/tenant-context.js';
+import { AuthRepository } from './auth.repository.js';
 import { generateRefreshToken, hashRefreshToken, isRefreshTokenShape } from './refresh-token.js';
 import { SessionRepository } from './session.repository.js';
 
@@ -46,6 +47,7 @@ export class SessionService {
     @Inject(AuthLookupService) private readonly lookup: AuthLookupService,
     @Inject(TenantContext) private readonly tenantContext: TenantContext,
     @Inject(SessionRepository) private readonly sessions: SessionRepository,
+    @Inject(AuthRepository) private readonly accounts: AuthRepository,
   ) {}
 
   /**
@@ -53,18 +55,25 @@ export class SessionService {
    * flow wraps its work in TenantContext.run); the driver single-session rule
    * (BR-18) is a separate call — `revokeOtherSessions` below.
    */
-  async issue(userId: string, meta: SessionClientMeta = {}): Promise<IssuedSession> {
+  async issue(
+    userId: string,
+    meta: SessionClientMeta = {},
+    options: { readonly singleSession?: boolean } = {},
+  ): Promise<IssuedSession> {
     const refreshToken = generateRefreshToken();
     const familyId = uuidv7();
     const refreshExpiresAt = new Date(Date.now() + REFRESH_SESSION_TTL_SECONDS * 1000);
-    const { id } = await this.sessions.create({
-      userId,
-      familyId,
-      refreshHash: hashRefreshToken(refreshToken),
-      expiresAt: refreshExpiresAt,
-      ip: meta.ip ?? null,
-      userAgent: meta.userAgent ?? null,
-    });
+    const { id } = await this.sessions.create(
+      {
+        userId,
+        familyId,
+        refreshHash: hashRefreshToken(refreshToken),
+        expiresAt: refreshExpiresAt,
+        ip: meta.ip ?? null,
+        userAgent: meta.userAgent ?? null,
+      },
+      { revokeOtherSessions: options.singleSession === true },
+    );
     return { sessionId: id, familyId, refreshToken, refreshExpiresAt };
   }
 
@@ -90,6 +99,18 @@ export class SessionService {
       return null;
     }
     if (found.revokedAt !== null || found.expiresAt.getTime() <= Date.now()) {
+      return null;
+    }
+    // A18: a disabled/deleted user or a suspended/deleted tenant fails now,
+    // with the generic failure, and the session is revoked so it cannot be
+    // retried later.
+    const active = await this.tenantContext.run({ tenantId: found.tenantId }, () =>
+      this.accounts.isAccountActive(found.userId),
+    );
+    if (!active) {
+      await this.tenantContext.run({ tenantId: found.tenantId }, () =>
+        this.sessions.revokeSession(found.sessionId, 'disabled'),
+      );
       return null;
     }
 

@@ -63,6 +63,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     const { status, body } = this.toError(exception);
+    if (status === HttpStatus.TOO_MANY_REQUESTS && exception instanceof DomainError) {
+      // A11: clients (and tests) get an explicit Retry-After; no bucket details.
+      const retry = exception.details?.retryAfterSeconds;
+      if (typeof retry === 'number' && Number.isFinite(retry)) {
+        res.setHeader('Retry-After', String(Math.ceil(retry)));
+      }
+    }
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       // 5xx details (SQLSTATE codes only, no PII) are log-only, never sent to clients.
       // errorCode is logged explicitly: the A14 redaction hides `code` keys

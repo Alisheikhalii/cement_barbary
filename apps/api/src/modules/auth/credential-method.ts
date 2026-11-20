@@ -11,6 +11,8 @@ export interface AuthIdentity {
   readonly tenantId: string;
   readonly userId: string;
   readonly roles: readonly AssignableRole[];
+  /** A19: the caller authenticated with a one-time password and may only change it. */
+  readonly mustChangePassword: boolean;
 }
 
 /**

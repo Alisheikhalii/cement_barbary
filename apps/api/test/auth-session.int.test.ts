@@ -8,6 +8,7 @@ import { AuthLookupService } from '../src/db/auth-lookup.service.js';
 import * as schema from '../src/db/schema/index.js';
 import { TenantContext } from '../src/db/tenant-context.js';
 import { TenantDb } from '../src/db/tenant-db.js';
+import { AuthRepository } from '../src/modules/auth/auth.repository.js';
 import { generateRefreshToken, hashRefreshToken } from '../src/modules/auth/refresh-token.js';
 import { SessionRepository } from '../src/modules/auth/session.repository.js';
 import {
@@ -15,7 +16,7 @@ import {
   SessionService,
   type RotatedSession,
 } from '../src/modules/auth/session.service.js';
-import { appPool, createTenant, createUser, ownerPool } from './setup/db.js';
+import { appPool, createTenant, createUser, ownerPool, testPii } from './setup/db.js';
 
 /**
  * Refresh-session lifecycle against real PostgreSQL (ADR-007 A8–A10, T05):
@@ -29,7 +30,8 @@ const db = () => drizzle(appPool(), { schema });
 const context = new TenantContext();
 const tenantDb = new TenantDb(db());
 const repository = new SessionRepository(tenantDb, context);
-const service = new SessionService(new AuthLookupService(db()), context, repository);
+const accounts = new AuthRepository(tenantDb, context, testPii());
+const service = new SessionService(new AuthLookupService(db()), context, repository, accounts);
 
 let owner: Pool;
 let tenantA: string;

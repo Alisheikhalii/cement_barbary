@@ -22,6 +22,10 @@ describe('passwordKindForRoles (A20: dual-role follows staff)', () => {
     expect(passwordKindForRoles(['CARRIER_ADMIN'])).toBe('staff');
     expect(passwordKindForRoles(['DRIVER', 'CARRIER_ADMIN'])).toBe('staff');
   });
+
+  it('fails closed: an account with no roles gets the staff rule', () => {
+    expect(passwordKindForRoles([])).toBe('staff');
+  });
 });
 
 describe('staff password policy (12–128 chars)', () => {
