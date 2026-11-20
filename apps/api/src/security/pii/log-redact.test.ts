@@ -90,6 +90,108 @@ describe('redactPii', () => {
   });
 });
 
+describe('redactPii — auth secrets (ADR-007 A14)', () => {
+  it('redacts password, PIN, token, secret, OTP and header keys at any depth', () => {
+    const input = {
+      password: 'secret-1',
+      nested: { newPassword: 'secret-2', pin: '12345678', driverPin: '87654321' },
+      accessToken: 'tok-1',
+      refresh_token_hash: 'tok-2',
+      tokenSecret: 'tok-3',
+      otp: '123456',
+      otpCode: '654321',
+      code: '999999', // future OTP shape — redacted (accepted trade-off, see log-redact.ts)
+      sms_code: '111111',
+      authorization: 'Bearer x',
+      cookieHeader: 'bitabar_refresh=…',
+      credentials: { password: 'secret-3' },
+      list: [{ passphrase: 'secret-4' }],
+    };
+    const out = redactPii(input);
+    const text = JSON.stringify(out);
+    for (const value of [
+      'secret-1',
+      'secret-2',
+      'secret-3',
+      'secret-4',
+      '12345678',
+      '87654321',
+      'tok-1',
+      'tok-2',
+      'tok-3',
+      '123456',
+      '654321',
+      '999999',
+      '111111',
+      'Bearer x',
+      'bitabar_refresh=…',
+    ]) {
+      expect(text).not.toContain(value);
+    }
+    expect(out.password).toBe(PII_REDACTED);
+    expect(out.code).toBe(PII_REDACTED);
+  });
+
+  it('keeps non-secret operational keys visible', () => {
+    const out = redactPii({
+      errorCode: 'INVALID_CREDENTIALS', // error codes stay observable (filter logs errorCode)
+      statusCode: 401,
+      codeName: 'named-shape',
+      tenantCode: 'dev-factory', // part of the public login identifier — needed for spray detection
+      tenantId: '00000000-0000-7000-8000-000000000001',
+      userId: '00000000-0000-7000-8000-000000000002',
+    });
+    expect(out.errorCode).toBe('INVALID_CREDENTIALS');
+    expect(out.statusCode).toBe(401);
+    expect(out.codeName).toBe('named-shape');
+    expect(out.tenantCode).toBe('dev-factory');
+    expect(out.tenantId).toBe('00000000-0000-7000-8000-000000000001');
+    expect(out.userId).toBe('00000000-0000-7000-8000-000000000002');
+  });
+
+  it('redacts api-key carrier keys (future adapters)', () => {
+    const out = redactPii({ apiKey: 'k-1', api_key: 'k-2', 'x-api-key': 'k-3' });
+    expect(out.apiKey).toBe(PII_REDACTED);
+    expect(out.api_key).toBe(PII_REDACTED);
+    expect(out['x-api-key']).toBe(PII_REDACTED);
+  });
+
+  it('a real log call with a password/token/cookie header and otp/code keys writes [Redacted]', () => {
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(String(chunk));
+        callback();
+      },
+    });
+    const logger = pino({ level: 'info', formatters: { log: redactPiiLogObject } }, stream);
+
+    logger.info(
+      {
+        password: 'hunter2-hunter2',
+        token: 'access-token-value',
+        cookie: 'bitabar_refresh=refresh-token-value',
+        otp: '481516',
+        code: '234267',
+      },
+      'auth redaction probe',
+    );
+
+    const output = chunks.join('');
+    for (const value of [
+      'hunter2-hunter2',
+      'access-token-value',
+      'refresh-token-value',
+      '481516',
+      '234267',
+    ]) {
+      expect(output).not.toContain(value);
+    }
+    expect(output).toContain(PII_REDACTED);
+    expect(output).toContain('auth redaction probe');
+  });
+});
+
 describe('pino wiring (formatters.log)', () => {
   it('hides phone and nationalId in a real log call', () => {
     const nationalId = randomNationalId();

@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — **F1-04 (احراز هویت) در حال اجرا: T01 انجام شد** (برنامه با ۸ شرط مالک تایید شد)؛ F1-03 کامل (tag v0.1.3) | آخرین Tag: **v0.1.3**
+- فاز فعلی: **F1** — **F1-04 (احراز هویت) در حال اجرا: T01+T02 انجام شد** (برنامه با ۸ شرط مالک تایید شد)؛ F1-03 کامل (tag v0.1.3) | آخرین Tag: **v0.1.3**
 - CI: **سبز** (run 44696738967 روی main: gitleaks تاریخچه کامل، lint/typecheck/test/int/build/audit، compose-config — همه سبز) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۳۰
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
@@ -35,6 +35,7 @@
 
 ## ۴. انجام‌شده (Changelog) ← جدیدترین بالا
 
+- [۱۴۰۵/۰۸/۳۰ | F1-04 T02] سرویس پسورد Argon2id (`PasswordService`: پارامترها از env با کف اجباری OWASP از ثابت `ARGON2_FLOOR`؛ `DUMMY_HASH` + verifyDummy برای ضد-شمارش؛ **اصلاح مالک:** هش ذخیره‌شده با پارامتر بیش از ۴× مقدار config یا PHC بدفرمت **قبل از اجرای Argon2** رد می‌شود — `ARGON2_STORED_HASH_MAX_FACTOR=4`)، سیاست دو بخشی A20 (کارمند ۱۲–۱۲۸، PIN راننده ۸–۲۰ رقمی با blocklist ~۹۸ + قواعد ساختاری all-same/run چرخه‌ای mod-10)، اینترفیس‌های `CredentialMethod` (A6) و `RateLimiter` (A11 — پیاده‌سازی DB در T06)، توسعه redaction لاگ (A14: password/pin/token/secret/apikey/otp/‎*code با allowlist errorCode/statusCode/tenantCode)؛ فیلتر ۵xx حالا `errorCode` را جدا لاگ می‌کند؛ `.env.example` با AUTH_* واقعی؛ وابستگی جدید @node-rs/argon2. نتیجه: ۳۲۸ تست واحد (۱۸۰ تست حمله Subagent A) + ۶۷ ادغام سبز، سوئیت auth ۵/۵ اجرای پایدار؛ بازبینی خواندنی Subagent B: **APPROVE** بدون یافته high/medium (۶ LOW: ۴ مورد اصلاح شد، ۲ مورد در §۷). چک‌پوینت مالک: تایید.
 - [۱۴۰۵/۰۸/۳۰ | F1-04 T01] برنامه F1-04 با ۸ شرط مالک تایید و پچ شد (تاخیر تدریجی+محدودیت per-tenant، تست شباهت زمانی با تلرانس، سخت‌سازی توابع definer، پین الگوریتم JWT، سیاست رمز یک‌بارمصرف CLI، ابطال session در reset، پارامترهای Argon2 از config با کف اجباری، SameSite=Lax با دلیل)؛ ADR-007 (A1–A20) و `docs/security/authn.md` نوشته شد؛ بدون کد.
 - [۱۴۰۵/۰۸/۲۹ | 14e60ae | F1-03 T08] جمع‌بندی F1-03: رفع تست flaky (warm-up نمونه ESLint در beforeAll با hookTimeout=60s + maxWorkers=4 + turbo --concurrency=2 — پایداری: ۲۰ اجرای متوالی سبز)؛ پاک‌سازی literalهای U17 (الگوی قدیمی موبایل/کدملی در مستندات و تست‌ها → بازه allowlist + randomNationalId؛ بدون نقل‌قول literal) در mask.ts/normalize.test.ts/users.types.test.ts + توسعه allowlist گیت‌لیکس برای فرم‌های +98/0098 همان بازه مصنوعی؛ gitleaks working-tree تمیز. بازنویسی تاریخچه محلی (تایید مالک، گزینه ۱): literalها از همه Commitهای push‌نشده و پیام T08 پاک شد؛ gitleaks هر دو حالت تمیز.
 - [۱۴۰۵/۰۸/۲۹ | 3ad5434 | F1-03 T07] Seed توسعه (U16): `src/db/seed/dev-seed.ts` با guard داخل runDevSeed (NODE_ENV=development اجباری — unset هم رد می‌شود — + host محلی برای هر دو URL)؛ tenant به‌عنوان owner، همه نوشتن users از طریق UsersRepository/TenantContext به‌عنوان نقش Runtime؛ idempotent؛ خارج از build/Docker/CI. ۱۰ تست ادغام (رد، idempotency، national_id=NULL، رمزنگاری+AAD، خوانش RLS). بازبینی امنیتی: APPROVE.
@@ -53,7 +54,7 @@
 
 ## ۵. در حال انجام / بعدی
 
-- **F1-04 احراز هویت در حال اجراست** (برنامه `docs/plan/F1-04.md` با ۸ شرط مالک تایید شد، ۱۴۰۵/۰۸/۳۰). T01 انجام شد؛ بعدی **T02** (password service + اینترفیس‌ها) — **چک‌پوینت امنیتی مالک پیش از Commit**؛ سپس T03+T04، T05، T06+T07 چک‌پوینت‌دارند. **Push/Tag فقط با اجازه مالک.** قاعده موازی‌کاری: یک نویسنده (agent اصلی)؛ Subagentها فقط خواندنی/تست حمله در فایل جدا و فقط با اجازه صریح مالک.
+- **F1-04 احراز هویت در حال اجراست** (برنامه `docs/plan/F1-04.md` با ۸ شرط مالک تایید شد، ۱۴۰۵/۰۸/۳۰). T01+T02 انجام شد؛ بعدی **T03+T04** (جداول `user_credentials`/`auth_sessions`/`auth_rate_limits` + RLS + توابع SECURITY DEFINER) — **چک‌پوینت امنیتی مالک پیش از Commit**؛ سپس T05 و T06+T07 چک‌پوینت‌دارند. **Push/Tag فقط با اجازه مالک.** قاعده موازی‌کاری: یک نویسنده (agent اصلی)؛ Subagentها فقط خواندنی/پیش‌نویس سناریوی حمله در فایل جدا و فقط با اجازه صریح مالک.
 
 ## ۶. پرسش‌های باز و فرض‌ها (برای مالک)
 
@@ -67,6 +68,9 @@
 - (تصمیم مالک، ۱۴۰۵/۰۸/۲۹) نشت `details` در پاسخ HTTP با گزینه A بسته شد: فیلتر فقط برای خطای <500 فیلد `details` را می‌فرستد؛ برای 5xx فقط در لاگ (همراه request id). پوشش: `http-exception.filter.test.ts`.
 
 ## ۷. بدهی فنی و ریسک‌های شناخته‌شده
+
+- (F1-04 T02، بازبینی B) وقتی پارامترهای Argon2 بالاتر از کف تنظیم شوند، dummy مسیر کاربر-ناشناخته با پارامترهای جدید اجرا می‌شود ولی هش‌های قدیمیِ floor-era با پارامترهای قدیمی verify می‌شوند → مسیر ناشناخته **کندتر** است (جهت امن: over-cost). با rehash-on-login در T06 هم‌تراز می‌شود؛ تا آن زمان در F7 مرور شود.
+- (F1-04 T02، دستور مالک) در **T07** بررسی شود که `tenantCode` در مسیرهای ورود در سطح debug لاگ نشود (allowlistِ redaction برای مشاهده‌پذیری spray-detection عمداً آن را باز گذاشته است).
 
 - نگه‌داری Blind Index پس از حذف نرم (ثبت T05): مقدار `*_enc`/`*_hash` در سطر حذف‌نرم‌شده باقی می‌ماند و index یکتای partial هش را برای استفاده مجدد آزاد می‌کند؛ سیاست purge (مدت نگه‌داری PII رمزنگاری‌شده کاربران حذف‌شده) یک تصمیم باز محصولی/حقوقی است — یادداشت سیاست در `docs/security/pii.md` بخش Retention.
 - چرخش کلیدهای PII (چند key_version فعال) هنوز ساخته نشده؛ بایت `key_version` در header امکانش را می‌دهد (ADR-006 U10).

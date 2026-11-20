@@ -1,21 +1,37 @@
 /**
- * Log redaction for personal data (ADR-006 U11): pino's path-based redact only
- * covers fixed paths, so PII fields are hidden structurally instead — any
- * object key that mentions a phone / mobile / national id, or carries a
- * `*_enc` / `*_hash` (or camelCase `…Enc` / `…Hash`) suffix, is replaced at
- * any depth. Wired as pino's `formatters.log` hook in app.module.ts.
+ * Log redaction for personal data (ADR-006 U11) and auth secrets (ADR-007
+ * A14): pino's path-based redact only covers fixed paths, so sensitive fields
+ * are hidden structurally instead — any object key that mentions a phone /
+ * mobile / national id, carries a `*_enc` / `*_hash` (or camelCase `…Enc` /
+ * `…Hash`) suffix, or names a password / PIN / token / secret / OTP code /
+ * authorization / cookie / credential is replaced at any depth. Wired as
+ * pino's `formatters.log` hook in app.module.ts.
  *
- * This is key-based redaction: it cannot see PII inside free-text values.
- * Never put a phone or national ID into a URL, an error message or a log
- * message string (see docs/security/pii.md).
+ * This is key-based redaction: it cannot see secrets inside free-text values.
+ * Never put a phone, national ID, password, token or OTP into a URL, an error
+ * message or a log message string (docs/security/pii.md, docs/security/authn.md).
+ *
+ * Any `*code` key (exact `code`, `sms_code`, `smsCode`, `verificationCode`, …)
+ * is redacted for future OTP flows — which would also hide DomainError.code
+ * inside logged `err` objects, so the exception filter logs the error code
+ * separately under `errorCode`, and `errorCode`/`statusCode` are allowlisted
+ * below to stay observable.
  */
 
 export const PII_REDACTED = '[Redacted]';
 export const PII_CIRCULAR = '[Circular]';
 
+/**
+ * Operational (non-secret) `*code` keys that must stay visible in logs —
+ * `tenantCode` is part of the public login identifier and is needed for
+ * spray-detection observability (T06).
+ */
+const CODE_KEY_ALLOWLIST = new Set(['errorcode', 'statuscode', 'tenantcode']);
+
 function isPiiKey(key: string): boolean {
   const k = key.toLowerCase();
   return (
+    // PII (ADR-006 U11)
     k.includes('phone') || // phone, phoneNumber, phone_number, driverPhone, …
     k.includes('mobile') ||
     k.includes('msisdn') ||
@@ -23,7 +39,24 @@ function isPiiKey(key: string): boolean {
     k.endsWith('_enc') ||
     k.endsWith('_hash') ||
     k.endsWith('enc') || // camelCase …Enc
-    k.endsWith('hash') // camelCase …Hash
+    k.endsWith('hash') || // camelCase …Hash
+    // Auth secrets (ADR-007 A14)
+    k.includes('password') ||
+    k.includes('passphrase') ||
+    k === 'pin' ||
+    k.endsWith('_pin') ||
+    k.endsWith('pin') || // driverPin, loginPin, …
+    k.startsWith('pin') || // pinCode, pin_code, … (over-redaction is safe)
+    k.includes('token') || // accessToken, refreshToken, idToken, …
+    k.includes('secret') ||
+    k.includes('apikey') || // apiKey, apikey, …
+    k.includes('api_key') ||
+    k.includes('api-key') || // x-api-key, …
+    k.includes('otp') || // otp, otpCode, otp_code, …
+    (k.endsWith('code') && !CODE_KEY_ALLOWLIST.has(k)) || // code, smsCode, verification_code, …
+    k.includes('authorization') ||
+    k.includes('cookie') ||
+    k.includes('credential')
   );
 }
 

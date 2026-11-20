@@ -65,9 +65,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const { status, body } = this.toError(exception);
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       // 5xx details (SQLSTATE codes only, no PII) are log-only, never sent to clients.
+      // errorCode is logged explicitly: the A14 redaction hides `code` keys
+      // (future OTP codes) and would otherwise swallow DomainError.code here.
       const details = exception instanceof DomainError ? exception.details : undefined;
       this.logger.error(
-        { err: exception, reqId: req.id, ...(details ? { details } : {}) },
+        {
+          err: exception,
+          reqId: req.id,
+          errorCode: body.error.code,
+          ...(details ? { details } : {}),
+        },
         'Unhandled error',
       );
     }

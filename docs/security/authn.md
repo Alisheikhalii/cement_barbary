@@ -29,7 +29,8 @@ without changing the login flow, tokens, sessions or tables (plan §J).
 - Hashing: **Argon2id** (`@node-rs/argon2`), PHC string in `user_credentials.password_hash`.
 - Parameters from env — `AUTH_ARGON2_MEMORY_KIB` (default 19456), `AUTH_ARGON2_TIME` (2),
   `AUTH_ARGON2_PARALLELISM` (1). The OWASP minimum (19 MiB / 2 / 1) is the **floor**: startup fails
-  on weaker settings.
+  on weaker settings. Stored hashes declaring more than 4 × the configured parameters (or any
+  malformed PHC) are rejected **before** Argon2 runs — no DoS via tampered stored hashes.
 - Policy: staff 12–128 characters; drivers a numeric PIN of 8–20 digits plus a common-PIN
   blocklist; never equal to the identifier; dual-role accounts follow the staff rule.
 - First passwords are **operator-set one-time passwords**: short expiry

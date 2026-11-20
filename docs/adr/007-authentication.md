@@ -19,7 +19,10 @@ folded into A1–A3, A7, A8, A11, A17 and A19 below. Full plan: `docs/plan/F1-04
   from env config — `AUTH_ARGON2_MEMORY_KIB` (default 19456 = 19 MiB), `AUTH_ARGON2_TIME` (2),
   `AUTH_ARGON2_PARALLELISM` (1) — with the OWASP minimum as the documented **floor**: startup
   rejects anything weaker (condition 7). Stored as the PHC string in
-  `user_credentials.password_hash` (`CHECK … LIKE '$argon2id$%'`).
+  `user_credentials.password_hash` (`CHECK … LIKE '$argon2id$%'`). A stored hash declaring
+  parameters beyond 4 × the configured values (`ARGON2_STORED_HASH_MAX_FACTOR`) — or any malformed
+  PHC — is rejected **before** Argon2 runs, so a tampered hash cannot turn `verify()` into a
+  memory/CPU DoS (owner T02 fix).
 - **A2 — Progressive delay instead of a hard lock** (condition 1): each consecutive failure delays
   the next attempt by `base × 2^(n-1)`, capped (env `AUTH_LOCK_BASE_SECONDS` 1 /
   `AUTH_LOCK_MAX_SECONDS` 300); counters reset on success; a delayed account gets the same generic

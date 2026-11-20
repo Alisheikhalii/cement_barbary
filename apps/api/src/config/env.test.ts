@@ -151,3 +151,49 @@ describe('parseEnv PII keys (ADR-006 U10)', () => {
     expect(message).toMatch(/must differ from PII_ENC_KEY/);
   });
 });
+
+describe('parseEnv auth config (ADR-007, F1-04)', () => {
+  it('defaults every auth number — Argon2 defaults equal the OWASP floor (A1)', () => {
+    const config = parseEnv({ ...BASE_ENV });
+    expect(config.auth.argon2).toEqual({ memoryKiB: 19456, time: 2, parallelism: 1 });
+    expect(config.auth.loginDelay).toEqual({ baseSeconds: 1, maxSeconds: 300 });
+    expect(config.auth.rateLimit).toEqual({ loginIpPerMinute: 20, loginTenantPerMinute: 60 });
+    expect(config.auth.accessTokenTtlSeconds).toBe(600);
+    expect(config.auth.tempPasswordTtlHours).toBe(24);
+  });
+
+  it('rejects Argon2 parameters weaker than the OWASP floor (condition 7)', () => {
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_ARGON2_MEMORY_KIB: '19455' })).toThrow(
+      /AUTH_ARGON2_MEMORY_KIB/,
+    );
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_ARGON2_TIME: '1' })).toThrow(/AUTH_ARGON2_TIME/);
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_ARGON2_PARALLELISM: '0' })).toThrow(
+      /AUTH_ARGON2_PARALLELISM/,
+    );
+  });
+
+  it('accepts stronger-than-floor Argon2 parameters', () => {
+    const config = parseEnv({
+      ...BASE_ENV,
+      AUTH_ARGON2_MEMORY_KIB: '65536',
+      AUTH_ARGON2_TIME: '4',
+      AUTH_ARGON2_PARALLELISM: '2',
+    });
+    expect(config.auth.argon2).toEqual({ memoryKiB: 65536, time: 4, parallelism: 2 });
+  });
+
+  it('rejects a delay base above the delay cap', () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, AUTH_LOCK_BASE_SECONDS: '60', AUTH_LOCK_MAX_SECONDS: '10' }),
+    ).toThrow(/must not exceed AUTH_LOCK_MAX_SECONDS/);
+  });
+
+  it('bounds the access-token TTL and the temp-password TTL', () => {
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_ACCESS_TOKEN_TTL_SECONDS: '30' })).toThrow(
+      /AUTH_ACCESS_TOKEN_TTL_SECONDS/,
+    );
+    expect(() => parseEnv({ ...BASE_ENV, AUTH_TEMP_PASSWORD_TTL_HOURS: '0' })).toThrow(
+      /AUTH_TEMP_PASSWORD_TTL_HOURS/,
+    );
+  });
+});
