@@ -2,8 +2,8 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — F1-03 **کامل و Push شد** (T01–T08)؛ بعدی F1-04 (احراز هویت) با تایید مالک | آخرین Tag: **v0.1.3** | آخرین Commit: 768a7c9 (+ همین به‌روزرسانی docs)
-- CI: **سبز** (run 44696738967 روی main: gitleaks تاریخچه کامل، lint/typecheck/test/int/build/audit، compose-config — همه سبز) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۲۹
+- فاز فعلی: **F1** — **F1-04 (احراز هویت) در حال اجرا: T01 انجام شد** (برنامه با ۸ شرط مالک تایید شد)؛ F1-03 کامل (tag v0.1.3) | آخرین Tag: **v0.1.3**
+- CI: **سبز** (run 44696738967 روی main: gitleaks تاریخچه کامل، lint/typecheck/test/int/build/audit، compose-config — همه سبز) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۳۰
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
 ## ۲. نقشه پروژه (فقط خلاصه)
@@ -28,12 +28,14 @@
 - ADR-001 نسخه ابزارها + `.npmrc` رجیستری رسمی npm | ADR-002 deny-list | ADR-003 ریپو PUBLIC + داده مصنوعی | ADR-004 استثنای موقت audit برای picomatch (`docs/adr/`).
 - ADR-005 دیتابیس/ایزولاسیون Tenant: Drizzle + `pg`، دو نقش DB (owner برای Migration، `bitabar_app` محدود برای Runtime)، RLS + `TenantDb` (D1–D13) — `docs/adr/005-database-drizzle-rls.md`.
 - ADR-006 کاربران/نقش‌ها/PII: نقش‌ها داده‌اند (۳ نقش — در T05b از ۶ نقش کاهش یافت، فقط Migration)، `users`/`user_roles` با RLS و FK ترکیبی، رمزنگاری AES-256-GCM با AAD و key_version، Blind Index با HMAC جدا، یکتایی per-tenant، Seed فقط dev — `docs/adr/006-users-roles-pii.md` (+ `docs/security/pii.md`).
+- ADR-007 احراز هویت (A1–A20): ورود v1 فقط پسورد Argon2id برای هر ۳ نقش پشت اینترفیس `CredentialMethod` (OTP طراحی‌شده/ساخته‌نشده، §J برنامه)؛ تاخیر تدریجی به‌جای قفل سخت؛ JWT HS256 (الگوریتم پین‌شده) + Refresh چرخشی با تشخیص سوءاستفاده؛ جداول `user_credentials`/`auth_sessions` (RLS) + `auth_rate_limits` (allowlist)؛ توابع SECURITY DEFINER برای lookup پیش‌از-auth؛ رمزهای یک‌بارمصرف اپراتوری با انقضا و تغییر اجباری — `docs/adr/007-authentication.md` (+ `docs/security/authn.md`، برنامه `docs/plan/F1-04.md` با ۸ شرط مالک).
 - **تصمیم مالک T05b (۱۴۰۵/۰۸/۲۹):** کاتالوگ نقش‌ها به ۳ نقش کاهش یافت (`FACTORY_OPERATOR`، `CARRIER_ADMIN`، `DRIVER`)؛ `PLATFORM_ADMIN`/`CARRIER_OPERATOR`/`AUDITOR` با Migration سفارشی `0004_role_catalog_trim` حذف شدند (forward-only؛ 0002/0003 ویرایش نشدند؛ guard در برابر ارجاع `user_roles`). `CARRIER_ADMIN` تنها نقش باربری است و مسئولیت‌های `CARRIER_OPERATOR` (اعلام بار، تایید لغو، صدور مجوز) را بر عهده گرفت — **OD-37 بسته شد**؛ ماتریس مجوز در F1-05 نوشته می‌شود. اصلاحیه در ADR-006 (تاریخچه بازنویسی نشد).
 - **تصمیمات مالک برای F1 (۱۴۰۵/۰۸/۲۷):** ORM = **Drizzle** (طبق برنامه معماری مالک؛ ADR در F1-02 نوشته می‌شود). نقش `CARRIER_ADMIN` فعلاً **فقط ورود، بدون هیچ مجوز عملیاتی** (موقت، در انتظار OD-37). ترتیب رسمی Taskهای F1 طبق برنامه مالک: F1-01 اسکلت API، F1-02 دیتابیس/Drizzle/Migration/Tenant Context، F1-03 کاربران و نقش‌ها (+Seed)، F1-04 احراز هویت، F1-05 RBAC، F1-06 Audit/Idempotency/Outbox، F1-07 داده پایه، F1-08 باربری‌ها، F1-09 اسکلت Web، F1-10 تست ایزولاسیون/IDOR/RLS (+ورود ۳ نقش — پس از کاهش کاتالوگ در T05b)، F1-11 Dockerfile و Build ایمیج در CI. محل UI پنل اپراتور (احتمالاً داخل F1-09) در شروع F1-09 تایید می‌شود.
 - `apps/api` به‌صورت **ESM** اجرا می‌شود (هم‌راستا با بقیه ریپو)؛ تست‌های NestJS با `unplugin-swc` (esbuild متادیتای decorator ندارد). `@nestjs/cli` برای build/dev استفاده می‌شود (GUIDELINES §۳.۵-د).
 
 ## ۴. انجام‌شده (Changelog) ← جدیدترین بالا
 
+- [۱۴۰۵/۰۸/۳۰ | F1-04 T01] برنامه F1-04 با ۸ شرط مالک تایید و پچ شد (تاخیر تدریجی+محدودیت per-tenant، تست شباهت زمانی با تلرانس، سخت‌سازی توابع definer، پین الگوریتم JWT، سیاست رمز یک‌بارمصرف CLI، ابطال session در reset، پارامترهای Argon2 از config با کف اجباری، SameSite=Lax با دلیل)؛ ADR-007 (A1–A20) و `docs/security/authn.md` نوشته شد؛ بدون کد.
 - [۱۴۰۵/۰۸/۲۹ | 14e60ae | F1-03 T08] جمع‌بندی F1-03: رفع تست flaky (warm-up نمونه ESLint در beforeAll با hookTimeout=60s + maxWorkers=4 + turbo --concurrency=2 — پایداری: ۲۰ اجرای متوالی سبز)؛ پاک‌سازی literalهای U17 (الگوی قدیمی موبایل/کدملی در مستندات و تست‌ها → بازه allowlist + randomNationalId؛ بدون نقل‌قول literal) در mask.ts/normalize.test.ts/users.types.test.ts + توسعه allowlist گیت‌لیکس برای فرم‌های +98/0098 همان بازه مصنوعی؛ gitleaks working-tree تمیز. بازنویسی تاریخچه محلی (تایید مالک، گزینه ۱): literalها از همه Commitهای push‌نشده و پیام T08 پاک شد؛ gitleaks هر دو حالت تمیز.
 - [۱۴۰۵/۰۸/۲۹ | 3ad5434 | F1-03 T07] Seed توسعه (U16): `src/db/seed/dev-seed.ts` با guard داخل runDevSeed (NODE_ENV=development اجباری — unset هم رد می‌شود — + host محلی برای هر دو URL)؛ tenant به‌عنوان owner، همه نوشتن users از طریق UsersRepository/TenantContext به‌عنوان نقش Runtime؛ idempotent؛ خارج از build/Docker/CI. ۱۰ تست ادغام (رد، idempotency، national_id=NULL، رمزنگاری+AAD، خوانش RLS). بازبینی امنیتی: APPROVE.
 - [۱۴۰۵/۰۸/۲۹ | 1813b86 | F1-03 T06] `UsersRepository` (U15): create/findById/findByUsername/findByPhone/assignRole/revokeRole/listRoles/softDelete فقط از طریق TenantDb + PiiService؛ بدون HTTP، بدون نوشتن national_id (Q3)؛ ترجمه SQLSTATE به DomainError (23505→conflict، 23503→badInput، بقیه→internal بدون لو رفتن متن SQL)؛ `src/db/sql.ts` re-export عملگرهای drizzle برای حفظ مرز D11. **+ اصلاح امنیتی فیلتر (تصمیم مالک، گزینه A):** `details` فقط برای خطای <500 در پاسخ HTTP می‌آید؛ برای 5xx فقط لاگ با request id (پیش از این `pgCode` به کلاینت لو می‌رفت). نتیجه: ۱۱۵ واحد + ۵۷ ادغام سبز.
@@ -51,7 +53,7 @@
 
 ## ۵. در حال انجام / بعدی
 
-- F1-03 کامل و بسته شد (T01–T08). بعدی: **F1-04 احراز هویت** — با تایید مالک شروع می‌شود؛ الزام §۶ درباره پاسخ/زمان‌بندی یکسان ورود (عدم شمارش کاربر) را در طراحی F1-04 لحاظ کن. **Push/Tag فقط با اجازه مالک.**
+- **F1-04 احراز هویت در حال اجراست** (برنامه `docs/plan/F1-04.md` با ۸ شرط مالک تایید شد، ۱۴۰۵/۰۸/۳۰). T01 انجام شد؛ بعدی **T02** (password service + اینترفیس‌ها) — **چک‌پوینت امنیتی مالک پیش از Commit**؛ سپس T03+T04، T05، T06+T07 چک‌پوینت‌دارند. **Push/Tag فقط با اجازه مالک.** قاعده موازی‌کاری: یک نویسنده (agent اصلی)؛ Subagentها فقط خواندنی/تست حمله در فایل جدا و فقط با اجازه صریح مالک.
 
 ## ۶. پرسش‌های باز و فرض‌ها (برای مالک)
 
@@ -60,7 +62,8 @@
 - (ثبت T05b برنامه F1-03) نقش `CARRIER_ADMIN` برای اتصال واقعی به یک باربری به ستون `carrier_id` روی `users` نیاز دارد؛ این در **F1-08** (باربری‌ها) حل می‌شود. تا آن زمان نقش فقط به‌عنوان داده وجود دارد.
 - (تصمیم مالک Q2/Q3 برنامه F1-03، ۱۴۰۵/۰۸/۲۹) موبایل مثل کد ملی رمزنگاری می‌شود. ستون‌های رمزنگاری‌شده کد ملی در F1-03 ساخته می‌شوند ولی **در این فاز هیچ داده‌ای در آن‌ها نوشته نمی‌شود** (مسیر نوشتن در F4 با پروفایل راننده).
 - UI صفحات داده پایه پنل اپراتور دقیقاً در کدام Task قرار می‌گیرد؟ فرض: داخل F1-09؛ در شروع F1-09 با مالک تایید می‌شود.
-- (ثبت T06، ۱۴۰۵/۰۸/۲۹) عدم‌تقارن عمدی Repository: `findByUsername` برای ورودی بدفرمت `null` برمی‌گرداند ولی `findByPhone` همان ورودی را با `badInput` رد می‌کند. **الزام F1-04:** پاسخ ورود برای «کاربر ناشناخته»، «شناسه بدفرمت» و «رمز اشتباه» باید **یکسان** (کد/پیام/وضعیت) و از نظر زمان‌بندی **مشابه** باشد تا شمارش کاربر (user enumeration) ممکن نشود؛ این ناهم‌خوانی در لایه Auth باید جذب شود، نه در Repository.
+- (ثبت T06، ۱۴۰۵/۰۸/۲۹) عدم‌تقارن عمدی Repository: `findByUsername` برای ورودی بدفرمت `null` برمی‌گرداند ولی `findByPhone` همان ورودی را با `badInput` رد می‌کند. **الزام F1-04:** پاسخ ورود برای «کاربر ناشناخته»، «شناسه بدفرمت» و «رمز اشتباه» باید **یکسان** (کد/پیام/وضعیت) و از نظر زمان‌بندی **مشابه** باشد تا شمارش کاربر (user enumeration) ممکن نشود؛ این ناهم‌خوانی در لایه Auth باید جذب شود، نه در Repository. → **جذب شد در F1-04** (ADR-007 A3 + شرط ۳ مالک: تست شباهت زمانی با تلرانس ≤ max(50ms، ۲۰٪) روی ≥۲۰ نمونه).
+- (تصمیمات مالک F1-04، ۱۴۰۵/۰۸/۳۰) Q1 ورود کارمند با `username@tenant-code` و راننده با تلفن (fan-out سرورساید)؛ Q2 rate-limit در Postgres پشت اینترفیس `RateLimiter` با TTL cleanup؛ Q3 outbox پیامک dev-only+localhost موکول به ساخت OtpMethod (§J)؛ Q4 رمز اولیه یک‌بارمصرف اپراتوری با انقضای کوتاه و تغییر اجباری؛ Q5 سیاست دو بخشی: کارمند ۱۲–۱۲۸ کاراکتر، راننده PIN عددی ۸–۲۰ رقم با blocklist. جزئیات کامل: ADR-007.
 - (تصمیم مالک، ۱۴۰۵/۰۸/۲۹) نشت `details` در پاسخ HTTP با گزینه A بسته شد: فیلتر فقط برای خطای <500 فیلد `details` را می‌فرستد؛ برای 5xx فقط در لاگ (همراه request id). پوشش: `http-exception.filter.test.ts`.
 
 ## ۷. بدهی فنی و ریسک‌های شناخته‌شده
