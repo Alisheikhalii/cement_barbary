@@ -9,6 +9,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './db/database.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { UsersModule } from './modules/users/users.module.js';
 import { PiiModule } from './security/pii/pii.module.js';
 import { redactPiiLogObject } from './security/pii/log-redact.js';
 
@@ -32,6 +33,7 @@ import { redactPiiLogObject } from './security/pii/log-redact.js';
     }),
     HealthModule,
     PiiModule,
+    UsersModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

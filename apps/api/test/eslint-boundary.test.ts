@@ -40,4 +40,10 @@ describe('ESLint D11 boundary (no-restricted-imports)', { timeout: 30000 }, () =
     const rules = await lintRules(code, 'src/db/probe.ts');
     expect(rules).not.toContain('no-restricted-imports');
   });
+
+  it('allows the sanctioned expression re-export (src/db/sql) outside src/db/**', async () => {
+    const code = "import { eq } from '../../db/sql.js';\nexport const probe = eq;\n";
+    const rules = await lintRules(code, 'src/modules/probe/probe.ts');
+    expect(rules).not.toContain('no-restricted-imports');
+  });
 });

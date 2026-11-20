@@ -65,4 +65,42 @@ describe('GlobalExceptionFilter', () => {
     filter.catch(new NotFoundException(), host);
     expect(setHeader).toHaveBeenCalledWith('x-request-id', 'req-1');
   });
+
+  it('never exposes 5xx DomainError details (e.g. pgCode) in the body — log only', () => {
+    const { filter, logger } = createFilter();
+    const { host, json, status } = createHost();
+    filter.catch(DomainError.internal({ pgCode: '22P02' }), host);
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      error: { code: 'INTERNAL', message: 'خطای داخلی سرور رخ داد' },
+    });
+    const body = json.mock.calls[0]?.[0] as { error: Record<string, unknown> };
+    expect(body.error).not.toHaveProperty('details');
+    // details are logged (SQLSTATE only, no PII) with the request id instead
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ reqId: 'req-1', details: { pgCode: '22P02' } }),
+      'Unhandled error',
+    );
+  });
+
+  it('keeps 4xx details in the body (client-facing validation issues)', () => {
+    const { filter } = createFilter();
+    const { host, json, status } = createHost();
+    const issues = [{ path: ['username'], message: 'Required' }];
+    filter.catch(DomainError.badInput({ issues }), host);
+    expect(status).toHaveBeenCalledWith(400);
+    expect(json).toHaveBeenCalledWith({
+      error: { code: 'BAD_INPUT', message: 'ورودی نامعتبر است', details: { issues } },
+    });
+  });
+
+  it('maps a 409 conflict unchanged (details allowed but not required)', () => {
+    const { filter } = createFilter();
+    const { host, json, status } = createHost();
+    filter.catch(DomainError.conflict(), host);
+    expect(status).toHaveBeenCalledWith(409);
+    expect(json).toHaveBeenCalledWith({
+      error: { code: 'CONFLICT', message: 'این مقدار قبلاً ثبت شده است' },
+    });
+  });
 });

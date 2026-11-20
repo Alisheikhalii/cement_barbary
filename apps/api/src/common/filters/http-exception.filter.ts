@@ -64,7 +64,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const { status, body } = this.toError(exception);
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
-      this.logger.error({ err: exception }, 'Unhandled error');
+      // 5xx details (SQLSTATE codes only, no PII) are log-only, never sent to clients.
+      const details = exception instanceof DomainError ? exception.details : undefined;
+      this.logger.error(
+        { err: exception, reqId: req.id, ...(details ? { details } : {}) },
+        'Unhandled error',
+      );
     }
     res.status(status).json(body);
   }
@@ -77,7 +82,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           error: {
             code: exception.code,
             message: exception.message,
-            ...(exception.details ? { details: exception.details } : {}),
+            // Client errors (4xx) may carry details (e.g. validation issues);
+            // server errors (5xx) never expose details — they are log-only.
+            ...(exception.statusCode < HttpStatus.INTERNAL_SERVER_ERROR && exception.details
+              ? { details: exception.details }
+              : {}),
           },
         },
       };

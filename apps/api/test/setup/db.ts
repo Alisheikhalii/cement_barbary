@@ -83,8 +83,9 @@ export async function createUser(
   let phoneEnc: Buffer | null = null;
   let phoneHash: Buffer | null = null;
   if (opts.phone) {
-    phoneHash = testPii().blindIndex('phone', tenantId, normalizePhone(opts.phone));
-    phoneEnc = testPii().encrypt(opts.phone, buildAad(tenantId, 'users.phone', id));
+    const normalized = normalizePhone(opts.phone);
+    phoneHash = testPii().blindIndex('phone', tenantId, normalized);
+    phoneEnc = testPii().encrypt(normalized, buildAad(tenantId, 'users.phone_enc', id));
   }
   await pool.query(
     `INSERT INTO users (id, tenant_id, username, display_name, phone_enc, phone_hash)

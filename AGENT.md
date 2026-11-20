@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — F1-03 در حال انجام: T01–T05 کامل و Commit محلی شدند؛ T05b (کاهش کاتالوگ نقش‌ها به ۳ نقش — تصمیم مالک) در حال Commit است؛ بعدی T06 | آخرین Tag: — | آخرین Commit: 1907d3d
+- فاز فعلی: **F1** — F1-03 در حال انجام: T01–T06 کامل و Commit محلی شدند؛ بعدی T07 (Seed — ۳ نقش) | آخرین Tag: — | آخرین Commit: <T06>
 - CI: سبز (F0) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۲۹
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
@@ -33,6 +33,8 @@
 
 ## ۴. انجام‌شده (Changelog) ← جدیدترین بالا
 
+- [۱۴۰۵/۰۸/۲۹ | <T06> | F1-03 T06] `UsersRepository` (U15): create/findById/findByUsername/findByPhone/assignRole/revokeRole/listRoles/softDelete فقط از طریق TenantDb + PiiService؛ بدون HTTP، بدون نوشتن national_id (Q3)؛ ترجمه SQLSTATE به DomainError (23505→conflict، 23503→badInput، بقیه→internal بدون لو رفتن متن SQL)؛ `src/db/sql.ts` re-export عملگرهای drizzle برای حفظ مرز D11. **+ اصلاح امنیتی فیلتر (تصمیم مالک، گزینه A):** `details` فقط برای خطای <500 در پاسخ HTTP می‌آید؛ برای 5xx فقط لاگ با request id (پیش از این `pgCode` به کلاینت لو می‌رفت). نتیجه: ۱۱۵ واحد + ۵۷ ادغام سبز.
+- [۱۴۰۵/۰۸/۲۹ | a93dfc6 | F1-03 T05b] کاهش کاتالوگ نقش‌ها به ۳ نقش (تصمیم مالک): Migration سفارشی 0004 (guard در برابر ارجاع user_roles + حذف PLATFORM_ADMIN/CARRIER_OPERATOR/AUDITOR + توضیح جدید CARRIER_ADMIN)؛ تست‌ها به ۳ نقش به‌روز شدند (سناریوی CHECK پلتفرم همچنان 23514 را اثبات می‌کند)؛ اصلاحیه ADR-006، PRD §۲ و BR-16، rls.md؛ OD-37 بسته شد.
 - [۱۴۰۵/۰۸/۲۹ | 1907d3d | F1-03 T05] سوئیت ایزولاسیون `users`/`user_roles` (۱۱ سناریوی جدید به‌عنوان `bitabar_app`: fail-closed، IDOR، 42501، حذف نرم، رد FK/CHECK/scope جعلی، یکتایی phone_hash per-tenant + استفاده مجدد پس از حذف نرم، CHECKهای U12، خالی‌بودن national_id) + guard سخت‌گیرانه U14 با allowlist و کنترل منفی. Fixtureها از مسیر واقعی PII. نتیجه: ۱۰۰ واحد + ۴۴ ادغام سبز.
 - [۱۴۰۵/۰۸/۲۹ | 0da92a6 | F1-03 T04] Migration سفارشی 0003: درج ۶ نقش (ON CONFLICT)، لغو INSERT/UPDATE/DELETE روی `roles`، الگوی RLS روی `users`/`user_roles`، لغو DELETE روی `users` (حذف نرم، U13). نام‌های فارسی نقش‌ها با تست بایت‌محور (hex) روی کانتینر تازه تایید شدند. `rls.md`: فهرست U14 + هشدار recreate.
 - [۱۴۰۵/۰۸/۲۹ | df4f8b5 | F1-03 T03] schemaهای `roles`/`users`/`user_roles` + Migration تولیدی 0002: FKهای ترکیبی (U4/U5/U6)، CHECKهای U12، indexهای یکتای partial per-tenant؛ اهداف FK به‌صورت UNIQUE constraint داخل CREATE TABLE (نه index) تا ترتیب Migration معتبر باشد.
@@ -46,7 +48,7 @@
 
 ## ۵. در حال انجام / بعدی
 
-- F1-03 در حال انجام: T01–T05 Commit محلی شدند (تا `1907d3d`)؛ T05b (کاهش نقش‌ها به ۳ نقش + Migration 0004) در حال Commit است. بعدی: T06 (UsersRepository)، T07 (Seed — ۳ نقش)، T08 (جمع‌بندی). **Push/Tag فقط با اجازه مالک.**
+- F1-03 در حال انجام: T01–T06 Commit محلی شدند. بعدی: T07 (Seed — ۳ نقش، طبق U16: فقط dev، idempotent، داده مصنوعی)، سپس T08 (جمع‌بندی + رفع تست flaky). **Push/Tag فقط با اجازه مالک.**
 
 ## ۶. پرسش‌های باز و فرض‌ها (برای مالک)
 
@@ -55,6 +57,8 @@
 - (ثبت T05b برنامه F1-03) نقش `CARRIER_ADMIN` برای اتصال واقعی به یک باربری به ستون `carrier_id` روی `users` نیاز دارد؛ این در **F1-08** (باربری‌ها) حل می‌شود. تا آن زمان نقش فقط به‌عنوان داده وجود دارد.
 - (تصمیم مالک Q2/Q3 برنامه F1-03، ۱۴۰۵/۰۸/۲۹) موبایل مثل کد ملی رمزنگاری می‌شود. ستون‌های رمزنگاری‌شده کد ملی در F1-03 ساخته می‌شوند ولی **در این فاز هیچ داده‌ای در آن‌ها نوشته نمی‌شود** (مسیر نوشتن در F4 با پروفایل راننده).
 - UI صفحات داده پایه پنل اپراتور دقیقاً در کدام Task قرار می‌گیرد؟ فرض: داخل F1-09؛ در شروع F1-09 با مالک تایید می‌شود.
+- (ثبت T06، ۱۴۰۵/۰۸/۲۹) عدم‌تقارن عمدی Repository: `findByUsername` برای ورودی بدفرمت `null` برمی‌گرداند ولی `findByPhone` همان ورودی را با `badInput` رد می‌کند. **الزام F1-04:** پاسخ ورود برای «کاربر ناشناخته»، «شناسه بدفرمت» و «رمز اشتباه» باید **یکسان** (کد/پیام/وضعیت) و از نظر زمان‌بندی **مشابه** باشد تا شمارش کاربر (user enumeration) ممکن نشود؛ این ناهم‌خوانی در لایه Auth باید جذب شود، نه در Repository.
+- (تصمیم مالک، ۱۴۰۵/۰۸/۲۹) نشت `details` در پاسخ HTTP با گزینه A بسته شد: فیلتر فقط برای خطای <500 فیلد `details` را می‌فرستد؛ برای 5xx فقط در لاگ (همراه request id). پوشش: `http-exception.filter.test.ts`.
 
 ## ۷. بدهی فنی و ریسک‌های شناخته‌شده
 
@@ -64,6 +68,7 @@
 - دانلود از registry.npmjs.org روی این شبکه کند/ناپایدار است (retry).
 - **docker.io برای Pull جدید 403 می‌دهد** (شبکه ایران): راه‌حل = Pull از `docker.arvancloud.ir/<image>` سپس `docker tag` به نام اصلی (برای `testcontainers/ryuk:0.14.0` و `zricethezav/gitleaks:v8.28.0` انجام و کش شد).
 - ریسک بسته‌شده در T09: handle تراکنشِ نگه‌داری‌شده پس از پایان `TenantDb.run` می‌توانست روی connection استفاده‌مجددشده داخل تراکنش Tenant دیگر اجرا شود؛ با Proxy محافظ در `tenant-db.ts` بسته شد (تست leak در `test/rls.int.test.ts`).
+- **بدهی T08:** یک تست واحد به‌صورت متناوب (۴ مشاهده تا ۱۴۰۵/۰۸/۲۹) Fail می‌شود؛ مظنون‌ها: ساخت نمونه ESLint در `eslint-boundary.test.ts`، رقابت workerهای turbo/vitest، یا timeout. ریشه‌یابی توسط Subagent در T07 انجام و اصلاح در T08 اعمال می‌شود.
 
 ## ۸. دستورهای مهم (اجرا، تست، Migration، Seed، Deploy)
 
