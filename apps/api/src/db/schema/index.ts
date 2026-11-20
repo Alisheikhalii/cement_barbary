@@ -6,3 +6,6 @@ export * from './tenants.js';
 export * from './roles.js';
 export * from './users.js';
 export * from './user-roles.js';
+export * from './user-credentials.js';
+export * from './auth-sessions.js';
+export * from './auth-rate-limits.js';
