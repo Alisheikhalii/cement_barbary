@@ -29,6 +29,15 @@ export class DomainError extends Error {
   }
 
   /**
+   * Insufficient permission or an invalid/ambiguous access marker — 403.
+   * Byte-identical to every other 403 (ADR-008 Z3/Z4, owner C2): never names
+   * the permission, a role, or why the check failed.
+   */
+  static forbidden(): DomainError {
+    return new DomainError('FORBIDDEN', 'دسترسی مجاز نیست', 403);
+  }
+
+  /**
    * The single generic credential failure (A3): unknown tenant/user/phone,
    * malformed identifier, wrong password, delayed, disabled, expired temp
    * password — identical status, code, message and shape. Never a reason.

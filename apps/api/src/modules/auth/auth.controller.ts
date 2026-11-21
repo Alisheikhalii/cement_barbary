@@ -1,12 +1,11 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 
-import { Public } from '../../common/auth/public.decorator.js';
 import { DomainError } from '../../common/errors/domain-error.js';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import { APP_CONFIG } from '../../config/config.module.js';
 import type { AppConfig } from '../../config/env.js';
+import { Public, SelfService, ZodBody } from '../../security/authz/decorators.js';
 import {
   changePasswordInputSchema,
   loginInputSchema,
@@ -44,7 +43,7 @@ export class AuthController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Log in with username@tenant-code or a phone number' })
   async login(
-    @Body(new ZodValidationPipe(loginInputSchema)) body: LoginInput,
+    @ZodBody(loginInputSchema) body: LoginInput,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<SessionTokens | { changeToken: string; expiresIn: number }> {
@@ -99,7 +98,7 @@ export class AuthController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Change the password with a change token or an access token' })
   async changePassword(
-    @Body(new ZodValidationPipe(changePasswordInputSchema)) body: ChangePasswordInput,
+    @ZodBody(changePasswordInputSchema) body: ChangePasswordInput,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<SessionTokens> {
@@ -112,6 +111,7 @@ export class AuthController {
     return result.tokens;
   }
 
+  @SelfService()
   @Get('me')
   @ApiOperation({ summary: 'The authenticated identity from the access token' })
   me(@Req() request: AuthedRequest): MeResult {

@@ -7,12 +7,12 @@ import { Public } from '../../common/auth/public.decorator.js';
 import { DbHealth } from '../../db/db-health.js';
 
 @ApiTags('health')
-@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly dbHealth: DbHealth) {}
 
   /** Liveness: the process is up. Intentionally has no dependency checks. */
+  @Public()
   @Get('live')
   @ApiOperation({ summary: 'Liveness probe' })
   live(): { status: 'ok' } {
@@ -20,6 +20,7 @@ export class HealthController {
   }
 
   /** Readiness: 200 when the database answers, 503 (standard envelope) otherwise. */
+  @Public()
   @Get('ready')
   @ApiOperation({ summary: 'Readiness probe' })
   async ready(): Promise<{ status: 'ok' }> {

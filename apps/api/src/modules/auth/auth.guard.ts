@@ -25,10 +25,10 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    // ADR-008 Z3: access markers are handler-level only. `get` (not
+    // getAllAndOverride) means a class-level @Public() cannot widen the
+    // authentication surface; the authorization guard rejects it too.
+    const isPublic = this.reflector.get<boolean>(IS_PUBLIC_KEY, context.getHandler());
     if (isPublic === true) {
       return true;
     }

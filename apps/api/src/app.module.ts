@@ -13,6 +13,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PiiModule } from './security/pii/pii.module.js';
 import { redactPiiLogObject } from './security/pii/log-redact.js';
+import { AuthzModule } from './security/authz/authz.module.js';
 
 @Module({
   imports: [
@@ -36,6 +37,9 @@ import { redactPiiLogObject } from './security/pii/log-redact.js';
     PiiModule,
     UsersModule,
     AuthModule,
+    // Must stay AFTER AuthModule: AuthGuard answers 401 before AuthorizationGuard
+    // decides 403 (ADR-008 Z4). The order is locked by a test.
+    AuthzModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

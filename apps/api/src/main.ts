@@ -3,7 +3,6 @@ import 'reflect-metadata';
 import { RequestMethod } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { API_PREFIX } from '@bitabar/shared';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
@@ -12,6 +11,7 @@ import { AppModule } from './app.module.js';
 import { APP_CONFIG } from './config/config.module.js';
 import type { AppConfig } from './config/env.js';
 import { loadEnvFiles } from './config/load-env.js';
+import { setupSwagger } from './swagger.js';
 
 async function bootstrap(): Promise<void> {
   loadEnvFiles();
@@ -32,12 +32,8 @@ async function bootstrap(): Promise<void> {
     ],
   });
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('BitaBar API')
-    .setDescription('Load announcement and driver queueing system')
-    .setVersion('0.1.0')
-    .build();
-  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  // C1/Z13: production must not expose Swagger at all.
+  setupSwagger(app, config);
 
   app.enableShutdownHooks();
   await app.listen(config.port);
