@@ -41,7 +41,9 @@ plan: `docs/plan/F1-05.md`.
   (a) a boot assertion over Nest `DiscoveryService` — the app refuses to start, (b) the route-scan
   test, and (c) the guard at runtime with `403 FORBIDDEN` and a server-side error log. Runtime fails
   closed even if (a)/(b) were bypassed. A throwaway unlabeled controller is the scan's negative
-  control and the boot-refusal fixture (owner C5/C6).
+  control and the boot-refusal fixture (owner C5/C6). Markers are **handler-level only**; a
+  class-level access marker is rejected. `@Public()` is allowed only on the routes listed in §D —
+  a new public route requires a reviewed allowlist change (CP1: GB-03/GB-04).
 - **Z4 — One authorization guard, fixed order.** A new global `AuthorizationGuard` is registered
   **after** the existing `AuthGuard`; authentication stays where it is. Anonymous call to a
   protected route → the existing auth guard's generic `401 UNAUTHORIZED` (it answers first).
@@ -53,7 +55,8 @@ plan: `docs/plan/F1-05.md`.
 - **Z5 — `can(principal, action, resource)`.** A pure, synchronous function in
   `security/authz/can.ts`. It looks up the principal's roles in the role→permission map, then
   resolves scope against the resource. Unknown role strings in a token are ignored — they never
-  grant. A role-less principal gets `@SelfService` routes only; every permission check denies.
+  grant; duplicate role codes are deduped and cannot inflate the set (CP1: BF-04). A role-less
+  principal gets `@SelfService` routes only; every permission check denies.
   Controllers never inspect roles themselves: an ESLint rule forbids importing role constants or
   reading `principal.roles` outside `security/authz/**` (same mechanism as the D11 DB boundary) and
   a negative + positive proof test proves the rule fires (owner C4).
@@ -63,7 +66,10 @@ plan: `docs/plan/F1-05.md`.
   effective role set is the **intersection** of token roles and DB roles: a stale grant cannot act,
   and the DB can never add a role the token did not carry. A disabled/deleted user or a
   suspended/deleted tenant is refused with the generic `401` even with an unexpired token (owner
-  C3). Cost: one indexed tenant-scoped query (~1 ms) on sensitive actions only — rare operator and
+  C3). The sensitive snapshot also verifies that the token's `sid` is **live and not revoked**
+  (CP1: SR-06): a logged-out session, or a session revoked by a role change, cannot perform a
+  sensitive action even if the user and roles are still active. Cost: one indexed tenant-scoped
+  query (~1 ms) on sensitive actions only — rare operator and
   carrier actions — instead of one extra transaction on every authenticated call, including driver
   polling at the F7 load peak. Rejected: per-request re-read (adds a DB transaction to every call);
   token-only roles (a revoked operator could still act for up to 10 minutes).
@@ -71,7 +77,8 @@ plan: `docs/plan/F1-05.md`.
   transaction** as the rotation `UPDATE`, so a new access token reflects one consistent snapshot.
   (b) Role assignment and revocation through `UsersRepository.assignRole/revokeRole` revoke **all**
   sessions of that user **in the same transaction** (owner Q3), so a role change cannot ride a
-  refresh snapshot. With Z6, the remaining window for non-sensitive permissions is the accepted
+  refresh snapshot. All `user_roles` writes live only in `UsersRepository`; a scan test asserts it
+  (CP1: SR-05). With Z6, the remaining window for non-sensitive permissions is the accepted
   access-token TTL risk recorded in ADR-007 A7.
 - **Z8 — Scope / ownership scaffold.** The guard resolves a branded `AccessScope`
   `{ tenantId, carrierId?, driverUserId? }` from the principal and stores it in the request's ALS
@@ -94,12 +101,18 @@ plan: `docs/plan/F1-05.md`.
   route schema declares it, because guards run before pipes and the per-request validation happens in
   the Zod pipe; and an `AuditHook` interface
   `record({ actor, action, resource, reason, outcome })` called by an interceptor after the handler.
-  F1-05 ships a **no-op** implementation; F1-06 replaces it with the real audit module. The reason is
-  never logged verbatim by pino outside the hook (redaction test in T06).
-- **Z11 — Mass assignment.** Every request-body Zod schema is `.strict()` (unknown keys → 400). A
-  scan test fails if any body schema contains `role`, `roles`, `tenantId`, `tenant_id`, `carrierId`,
-  `carrier_id`, `status`, `userId` or `createdBy` unless the schema is on a written allowlist with a
-  reason (empty today). Identity and tenant always come from the principal, never the body.
+  F1-05 ships a **no-op** implementation; F1-06 replaces it with the real audit module. The reason
+  rejects control characters (CR/LF/NUL and the rest of `\x00`–`\x1F`, `\x7F`) in addition to the
+  trim and 10–500 bounds (CP1: SA-02), and is never logged verbatim by pino outside the hook
+  (redaction test in T06). A guard denial is logged server-side with the request id and a stable
+  reason code only — never the permission name, the role list or the user-supplied reason text; the
+  client receives only the generic body (CP1: SA-03).
+- **Z11 — Mass assignment.** Every request-body Zod schema is `.strict()` at **every nested object
+  level** (unknown keys → 400). A scan test fails if any body, query or params schema contains
+  `role`, `roles`, `tenantId`, `tenant_id`, `carrierId`, `carrier_id`, `status`, `userId` or
+  `createdBy` unless the schema is on a written allowlist with a reason (empty today). The scan
+  walks nested shapes and query/params schemas, not only top-level body keys (CP1: MA-02/MA-03).
+  Identity and tenant always come from the principal, never the request.
 - **Z12 — Matrix stays in sync.** `docs/security/permission-matrix.md` contains a generated block
   between markers (`<!-- matrix:begin -->…<!-- matrix:end -->`) produced from three inputs (the
   catalog, the role map and the production route scan) by
@@ -124,6 +137,12 @@ plan: `docs/plan/F1-05.md`.
 - **C6 — Two markers on one route fail** scan, boot and runtime (Z3).
 - **C7 — No new business endpoint and no schema change in F1-05;** if either becomes necessary,
   stop and ask the owner.
+
+**CP1 dispositions (owner, 2026-11-21):** adopted GB-03/GB-04, BF-04, RD-03, SA-05, SR-06,
+SA-02/SA-03, MA-02/MA-03 and SR-05 as reflected in Z3/Z5/Z6/Z7/Z10/Z11; accepted ID-05/DE-03
+(timing side channels), DE-02 (no rate limit on the sensitive re-read) and ID-03 (no driver-owned
+resource until F1-10) as recorded risks in AGENT.md §7, to revisit in F7. The `trust-proxy.test.ts`
+repeat flake is an operational T08 obligation, not an authorization decision.
 
 **Alternatives considered:**
 
@@ -157,6 +176,10 @@ plan: `docs/plan/F1-05.md`.
   truthfulness is a human/process control, not something code can verify.
 - Generic 403/404 bodies reduce client-side debuggability. Server-side logs keep the internal
   reason with the request id; the client never receives a permission name or a row-existence signal.
+- **Accepted at CP1 (revisit F7):** timing/latency side channels between 403/404 and between
+  sensitive/normal paths (ID-05/DE-03); no per-principal rate limit or cache on the sensitive-action
+  DB re-read (DE-02); no driver-owned resource exists in F1-05, so `own` scope is constructor-tested
+  only and F1-10 covers the real driver routes (ID-03). Recorded in AGENT.md §7.
 
 **Consequences:**
 

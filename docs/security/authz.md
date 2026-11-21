@@ -21,8 +21,9 @@ test and at runtime.
    context for repositories.
 4. For a **sensitive** permission, the guard re-reads the user's status, tenant status and roles,
    intersects them with the token roles, and only then calls `can()`.
-5. Pipes (Zod, `.strict()`) validate the body; the handler runs. Sensitive routes have a `reason`
-   field in their schema and the `AuditHook` interceptor records the outcome (no-op until F1-06).
+5. Pipes (Zod, `.strict()`) validate the body; the handler runs. Sensitive routes have a validated
+   `reason` field in their schema and the `AuditHook` interceptor records the outcome (no-op until
+   F1-06). A guard denial is logged server-side with the request id and a stable reason code only.
 
 Guards run **before** pipes. That is why the sensitive `reason` requirement is enforced by the
 route-scan test against the route's body schema, not by the guard.
@@ -37,7 +38,10 @@ route-scan test against the route's body schema, not by the guard.
 
 - None, or more than one (for example `@Public()` + `@RequirePermission`) → the app refuses to
   start, the route-scan test fails, and the runtime guard answers `403`.
-- A handler-level marker overrides the controller; the scan reads the effective handler metadata.
+- Markers are **handler-level only**. A class-level access marker is rejected by the scan and boot
+  check, so a controller annotation cannot silently open unmarked handlers.
+- `@Public()` is allowed only on the routes listed in the §D allowlist; a new public route requires
+  a reviewed allowlist change. The scan treats any other public route as a failure.
 - The route-scan test and the boot assertion are two independent checks over the same
   `DiscoveryService` data. A throwaway unlabeled controller is the negative control for both.
 
@@ -65,8 +69,8 @@ the three role codes to permission names.
 "planned, not active" section and are not in code until their endpoints exist.
 
 `can(principal, action, resource)` is pure and synchronous: role → permission lookup, then scope
-resolution. Unknown role strings in a token are ignored — they never grant. A role-less principal
-gets `@SelfService` only.
+resolution. Unknown role strings in a token are ignored — they never grant; duplicate role codes
+are deduped and cannot inflate the set. A role-less principal gets `@SelfService` only.
 
 ### Scopes
 
@@ -95,10 +99,13 @@ cannot grant access.
 1. Put the handler in a module controller and give it **exactly one** marker. Use
    `@RequirePermission(PERMISSIONS.x)` for data routes; never check `principal.roles` in a
    controller.
-2. Define a `.strict()` Zod body schema. Identity, tenant, carrier and status always come from the
-   principal or the scope — never from the body.
-3. If the permission is sensitive, include `reason: z.string().trim().min(10).max(500)` in the
-   schema; the `AuditHook` records it (no-op in F1-05).
+2. Define a `.strict()` Zod body schema at every nested object level, plus strict query/params
+   schemas. Identity, tenant, carrier and status always come from the principal or the scope — never
+   from the request.
+3. If the permission is sensitive, include
+   `reason: z.string().trim().min(10).max(500).regex(/^[^\x00-\x1F\x7F]*$/)` in the schema; the
+   `AuditHook` records it (no-op in F1-05). The scan checks the bounds and control-character rule,
+   not merely the presence of a `reason` key.
 4. Query through a repository that accepts **only** an `AccessScope` and filters `tenant_id` and
    `carrier_id`/driver id together with the row id. Never `WHERE id` only. An out-of-scope row is a
    `404`, not a `403`.
@@ -110,13 +117,13 @@ cannot grant access.
 
 ## Status codes and response hygiene
 
-| Status | When                                                                                                                                      |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `401`  | missing/invalid/expired token; change token on a protected route; disabled/deleted user or suspended/deleted tenant on a sensitive action |
-| `403`  | authenticated but missing the required permission; unmarked/duplicate-marker route; carrier scope without a carrier id                    |
-| `404`  | out-of-scope row, nonexistent row, unknown route — all with the same generic body                                                         |
-| `400`  | Zod validation: unknown body keys, forbidden identity fields, missing/short reason                                                        |
-| `429`  | authentication rate limits (ADR-007), never an authorization answer                                                                       |
+| Status | When                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `401`  | missing/invalid/expired token; change token on a protected route; disabled/deleted user or suspended/deleted tenant or revoked session on a sensitive action |
+| `403`  | authenticated but missing the required permission; unmarked/duplicate-marker route; carrier scope without a carrier id                                       |
+| `404`  | out-of-scope row, nonexistent row, unknown route — all with the same generic body                                                                            |
+| `400`  | Zod validation: unknown body keys, forbidden identity fields, missing/short/control-character reason                                                         |
+| `429`  | authentication rate limits (ADR-007), never an authorization answer                                                                                          |
 
 Every `403` body is byte-identical to every other `403`; every `404` body is byte-identical to
 every other `404`, including the unknown-route 404 from the global filter. The body never names a
@@ -127,9 +134,9 @@ internal reason with the request id; they never carry PII or tokens.
 
 - Normal permissions trust the access-token `roles` claim. Staleness is bounded by the token TTL
   (10 min, ADR-007 A7).
-- **Sensitive** permissions re-read `users.status`, tenant `status` and the role rows inside the
-  guard. Effective roles = token roles ∩ DB roles. Disabled/deleted user or suspended/deleted tenant
-  → generic `401`.
+- **Sensitive** permissions re-read `users.status`, tenant `status`, the role rows and the token
+  session's liveness inside the guard. Effective roles = token roles ∩ DB roles. Disabled/deleted
+  user, suspended/deleted tenant, or a logged-out/revoked `sid` → generic `401`.
 - Refresh reads status and roles **inside the rotation transaction**, so a new token is one
   consistent snapshot.
 - `UsersRepository.assignRole` / `revokeRole` revoke **all** sessions of that user in the same
@@ -137,12 +144,14 @@ internal reason with the request id; they never carry PII or tokens.
 
 ## Sensitive actions
 
-A permission with `sensitive: true` requires the role, a `reason` (10–500 trimmed characters) and
-fresh intersected roles. The `AuditHook` interface
+A permission with `sensitive: true` requires the role, a `reason` (10–500 trimmed characters, no
+control characters) and fresh intersected roles. The `AuditHook` interface
 `record({ actor, action, resource, reason, outcome })` is called by an interceptor after the handler;
 F1-05 ships a **no-op** provider and F1-06 replaces it with the audit module. The reason is never
-logged verbatim by pino outside the hook (T06 redaction test). The current sensitive list is in
-`docs/security/permission-matrix.md` §Sensitive actions (from plan §F).
+logged verbatim by pino outside the hook (T06 redaction test). A guard denial is logged server-side
+with the request id and a stable reason code only — never the permission name, the role list or the
+user-supplied reason text — while the client receives only the generic body. The current sensitive
+list is in `docs/security/permission-matrix.md` §Sensitive actions (from plan §F).
 
 ## Scope enforcement pattern
 

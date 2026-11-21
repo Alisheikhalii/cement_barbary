@@ -79,8 +79,10 @@ carrier RLS exist. Until then carrier scope fails closed (403).
 
 ## Sensitive actions (guard ready, audit hook later — F1-06)
 
-Every row requires the role, a `reason` (10–500 trimmed characters), fresh token ∩ DB roles and the
-`AuditHook` (no-op until F1-06). This list is copied from plan §F.
+Every row requires the role, a `reason` (10–500 trimmed characters, **no control characters**),
+fresh token ∩ DB roles and the `AuditHook` (no-op until F1-06). A guard denial is logged server-side
+with the request id and a stable reason code only; the client never receives the permission name,
+the role list or the reason text. This list is copied from plan §F.
 
 | Action (PRD)                                       | Role               | Scope   | Phase |
 | -------------------------------------------------- | ------------------ | ------- | ----- |
@@ -103,8 +105,9 @@ endpoints.
 
 - Insufficient role or permission → `403`, generic body, identical for every route and role.
 - Row outside the principal's scope → `404`, identical to a nonexistent row and to an unknown route.
-- Anonymous or invalid/expired token, disabled/deleted user, suspended/deleted tenant on a sensitive
-  action → generic `401`.
+- Anonymous or invalid/expired token, disabled/deleted user, suspended/deleted tenant, or a revoked
+  session on a sensitive action → generic `401`.
+- A sensitive `reason` with control characters or outside 10–500 trimmed characters → `400`.
 - No response names a permission, a role, a tenant/carrier or whether a resource exists.
 
 ## Changing the matrix

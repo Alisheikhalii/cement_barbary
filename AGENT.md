@@ -100,6 +100,7 @@
 - **docker.io برای Pull جدید 403 می‌دهد** (شبکه ایران): راه‌حل = Pull از `docker.arvancloud.ir/<image>` سپس `docker tag` به نام اصلی (برای `testcontainers/ryuk:0.14.0` و `zricethezav/gitleaks:v8.28.0` انجام و کش شد).
 - ریسک بسته‌شده در T09: handle تراکنشِ نگه‌داری‌شده پس از پایان `TenantDb.run` می‌توانست روی connection استفاده‌مجددشده داخل تراکنش Tenant دیگر اجرا شود؛ با Proxy محافظ در `tenant-db.ts` بسته شد (تست leak در `test/rls.int.test.ts`).
 - **بدهی T08:** یک تست واحد به‌صورت متناوب (۴ مشاهده تا ۱۴۰۵/۰۸/۲۹) Fail می‌شود؛ مظنون‌ها: ساخت نمونه ESLint در `eslint-boundary.test.ts`، رقابت workerهای turbo/vitest، یا timeout. ریشه‌یابی توسط Subagent در T07 انجام و اصلاح در T08 اعمال می‌شود. → **حل شد در T08:** ریشه = بار یک‌باره lazy لود flat-config/pلاگین‌های ESLint داخل اولین lintText تحت رقابت CPU؛ اصلاح: warm-up در beforeAll (۶۰s) + maxWorkers=4 + turbo --concurrency=2؛ ۲۰/۲۰ اجرا سبز.
+- (F1-05 CP1، ۱۴۰۵/۰۹/۰۱) ریسک‌های پذیرفته‌شده برای F1-05 (بازبینی F7): (الف) کانال‌های جانبی زمان‌بندی بین 403/404 و بین مسیر حساس/عادی (ID-05/DE-03)؛ (ب) نبود rate-limit/کش per-principal روی re-read حساس (DE-02)؛ (ج) تا F1-10 هیچ منبع متعلق به راننده وجود ندارد، پس scope نوع `own` فقط در سطح constructor تست می‌شود (ID-03). **همچنین:** timeout تست `trust-proxy.test.ts` یک flake تکراری است؛ T08 باید ریشه آن را (همان خانواده warm-up/contention تست ESLint) پیدا کند و پایداری را با **۲۰ اجرای متوالی سبز** ثابت کند؛ assertions نباید شل شوند.
 
 ## ۸. دستورهای مهم (اجرا، تست، Migration، Seed، Deploy)
 
