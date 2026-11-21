@@ -8,7 +8,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DomainError } from '../../common/errors/domain-error.js';
 import type { AuthzFreshness } from '../../db/authz-freshness.js';
 import { AuthorizationGuard } from './authorization.guard.js';
+import { can } from './can.js';
 import { IS_PUBLIC_KEY, REQUIRE_PERMISSION_KEY } from './decorators.js';
+import { createPrincipal } from './principal.js';
 
 const freshnessRead = vi.fn();
 const freshness = { read: freshnessRead } as unknown as AuthzFreshness;
@@ -176,6 +178,40 @@ describe('AuthorizationGuard sensitive freshness', () => {
     await expect(sensitiveGuard().canActivate(contextForSensitive())).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
+  });
+
+  it('denies a non-intersecting token role even when that role would grant', async () => {
+    // Token says FACTORY_OPERATOR; the DB says this user is only CARRIER_ADMIN.
+    // FACTORY_OPERATOR grants carrier_membership.write and CARRIER_ADMIN does
+    // not, so a token-only decision would pass. The 403 can therefore only come
+    // from the token∩DB intersection inside the sensitive branch.
+    const tokenOnly = createPrincipal({
+      userId: '00000000-0000-4000-8000-000000000001',
+      tenantId: '00000000-0000-4000-8000-000000000002',
+      sessionId: '00000000-0000-4000-8000-000000000003',
+      roles: ['FACTORY_OPERATOR'],
+    });
+    const dbOnly = createPrincipal({
+      userId: tokenOnly.userId,
+      tenantId: tokenOnly.tenantId,
+      sessionId: tokenOnly.sessionId,
+      roles: ['CARRIER_ADMIN'],
+    });
+    expect(can(tokenOnly, 'carrier_membership.write')).toBe(true);
+    expect(can(dbOnly, 'carrier_membership.write')).toBe(false);
+
+    freshnessRead.mockClear();
+    freshnessRead.mockResolvedValueOnce({
+      userActive: true,
+      tenantActive: true,
+      sessionLive: true,
+      roles: ['CARRIER_ADMIN'],
+    });
+    await expect(sensitiveGuard().canActivate(contextForSensitive())).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      statusCode: 403,
+    });
+    expect(freshnessRead).toHaveBeenCalledTimes(1);
   });
 
   it('answers the generic 401 for a dead session or inactive account/tenant', async () => {
