@@ -64,6 +64,8 @@ describe('AuthorizationGuard denial logging', () => {
       { reqId: 'req-7', reasonCode: 'AUTHZ_PERMISSION_DENIED' },
       'authorization denied',
     );
+    // T05: a denied request never receives a scope context.
+    expect('authz' in request).toBe(false);
 
     const logged = JSON.stringify(warn.mock.calls[0]?.[0]);
     expect(logged).not.toContain('destination.read');
@@ -166,6 +168,10 @@ describe('AuthorizationGuard sensitive freshness', () => {
       userId: '00000000-0000-4000-8000-000000000001',
       sessionId: '00000000-0000-4000-8000-000000000003',
     });
+    // T05: the successful pass attaches a scope built from the effective
+    // (token∩DB) principal and the permission's tenant scope.
+    const context = request.authz as { scope?: { tenantId?: string } } | undefined;
+    expect(context?.scope?.tenantId).toBe('00000000-0000-4000-8000-000000000002');
   });
 
   it('denies a token role the DB no longer has', async () => {

@@ -53,6 +53,16 @@ export class DomainError extends Error {
     });
   }
 
+  /**
+   * A resource is absent OR outside the caller's access scope — always the
+   * same generic 404 (ADR-008 Z8, F1-05 T05). The message is identical to the
+   * framework's route-not-found body, so an out-of-scope row, a missing row and
+   * a missing route cannot be told apart by status, code or body.
+   */
+  static notFound(): DomainError {
+    return new DomainError('NOT_FOUND', 'مسیر مورد نظر یافت نشد', 404);
+  }
+
   /** Unexpected internal failure (e.g. an untranslated DB error) — 500. Message and details never echo input data. */
   static internal(details?: Record<string, unknown>): DomainError {
     return new DomainError('INTERNAL', 'خطای داخلی سرور رخ داد', 500, details);

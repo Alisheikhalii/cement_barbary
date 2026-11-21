@@ -8,6 +8,7 @@ import { DomainError } from '../../common/errors/domain-error.js';
 import { APP_CONFIG } from '../../config/config.module.js';
 import type { AppConfig } from '../../config/env.js';
 import { AuthzFreshness } from '../../db/authz-freshness.js';
+import { AccessScope } from './access-scope.js';
 import { can } from './can.js';
 import {
   hasClassLevelAccessMarker,
@@ -15,8 +16,8 @@ import {
   IS_SELF_SERVICE_KEY,
   REQUIRE_PERMISSION_KEY,
 } from './decorators.js';
-import { isPermissionName, isSensitivePermission } from './permissions.js';
-import { createPrincipal, type Principal } from './principal.js';
+import { isPermissionName, isSensitivePermission, type PermissionName } from './permissions.js';
+import { createVerifiedPrincipal, type Principal } from './principal.js';
 import { isAllowlistedPublicRoute, type GuardDenialReason } from './route-scan.js';
 
 /**
@@ -39,6 +40,11 @@ interface AuthedClaims {
 
 interface AuthorizedRequest extends Request {
   auth?: AuthedClaims;
+  /** Server-built context; attached only after a permission check passes. */
+  authz?: {
+    readonly principal: Principal;
+    readonly scope: AccessScope;
+  };
 }
 
 @Injectable()
@@ -109,7 +115,7 @@ export class AuthorizationGuard implements CanActivate {
         return this.denyUnauthorized(request, 'AUTHZ_FRESHNESS_DENIED');
       }
       const dbRoles = new Set(fresh.roles);
-      const effective = createPrincipal({
+      const effective = createVerifiedPrincipal({
         userId: principal.userId,
         tenantId: principal.tenantId,
         sessionId: principal.sessionId,
@@ -119,12 +125,47 @@ export class AuthorizationGuard implements CanActivate {
       if (!can(effective, permissionMetadata)) {
         return this.deny(request, 'AUTHZ_PERMISSION_DENIED');
       }
-      return true;
+      return this.attachScope(request, effective, permissionMetadata);
     }
     if (!can(principal, permissionMetadata)) {
       return this.deny(request, 'AUTHZ_PERMISSION_DENIED');
     }
-    return true;
+    return this.attachScope(request, principal, permissionMetadata);
+  }
+
+  /**
+   * Attaches the brand-protected resource scope (T05) only AFTER the permission
+   * check passed. The scope is built from the verified principal and the
+   * permission's catalog scope — never from body, query, params or headers.
+   *
+   * Idempotent: a second successful pass on the same request keeps the first
+   * attachment instead of throwing on the non-configurable property. A scope
+   * that cannot be built (e.g. carrier scope without a carrier id) is logged as
+   * a normal guard denial rather than escaping as an unlogged 403.
+   */
+  private attachScope(
+    request: AuthorizedRequest,
+    principal: Principal,
+    permission: PermissionName,
+  ): true {
+    if (request.authz !== undefined) {
+      return true;
+    }
+    try {
+      const scope = AccessScope.forPermission(principal, permission);
+      Object.defineProperty(request, 'authz', {
+        value: Object.freeze({ principal, scope }),
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof DomainError) {
+        return this.deny(request, 'AUTHZ_SCOPE_DENIED');
+      }
+      throw error;
+    }
   }
 
   /** Principal from verified claims only — never from body, query or params. */
@@ -133,7 +174,9 @@ export class AuthorizationGuard implements CanActivate {
     if (claims === undefined) {
       return null;
     }
-    return createPrincipal({
+    // F1-08: add the token's `cid` claim here when carriers get a carrier id;
+    // until then `carrierId` stays absent and carrier scope fails closed.
+    return createVerifiedPrincipal({
       userId: claims.sub,
       tenantId: claims.tid,
       sessionId: claims.sid,

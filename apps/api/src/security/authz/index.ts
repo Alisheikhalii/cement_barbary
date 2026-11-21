@@ -23,3 +23,6 @@ export type { Principal, PrincipalInput } from './principal.js';
 
 export { can, scopeAllows } from './can.js';
 export type { ResourceRef } from './can.js';
+
+export { assertInScope, readAuthzContext, rowInScope } from './access-scope.js';
+export type { AccessScope, AuthzContext, ScopedRow } from './access-scope.js';

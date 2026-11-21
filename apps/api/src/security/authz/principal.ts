@@ -38,3 +38,23 @@ export function createPrincipal(input: PrincipalInput): Principal {
     ...(input.carrierId === undefined ? {} : { carrierId: input.carrierId }),
   });
 }
+
+/**
+ * Principals created from VERIFIED access-token claims. Only the authorization
+ * guard uses this factory; `AccessScope` refuses a plain `createPrincipal()`
+ * result, so a future controller cannot mint a usable scope from request data.
+ * This WeakSet is the runtime half of the nominal `Principal` boundary.
+ */
+const verifiedPrincipals = new WeakSet<Principal>();
+
+/** Internal to the authz layer: marks a principal as token-verified. */
+export function createVerifiedPrincipal(input: PrincipalInput): Principal {
+  const principal = createPrincipal(input);
+  verifiedPrincipals.add(principal);
+  return principal;
+}
+
+/** True only for a principal produced by `createVerifiedPrincipal`. */
+export function isVerifiedPrincipal(value: unknown): value is Principal {
+  return typeof value === 'object' && value !== null && verifiedPrincipals.has(value as Principal);
+}
