@@ -207,6 +207,23 @@ describe('route scan — permissions and sensitive bodies (SA-05)', () => {
     ).toBe(false);
     expect(reasonSchemaIsValid(null)).toBe(false);
     expect(reasonSchemaIsValid({ shape: {} })).toBe(false);
+
+    // A hand-rolled schema that rejects only C0 is NOT enough: C1, zero-width,
+    // bidi and lone surrogates must also fail the boot gate.
+    const c0Only = z.strictObject({
+      reason: z
+        .string()
+        .trim()
+        .min(10)
+        .max(500)
+        .refine((value) =>
+          [...value].every((character) => {
+            const codePoint = character.codePointAt(0) ?? 0;
+            return codePoint > 0x1f;
+          }),
+        ),
+    });
+    expect(reasonSchemaIsValid(c0Only)).toBe(false);
   });
 });
 

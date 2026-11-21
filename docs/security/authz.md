@@ -102,10 +102,12 @@ cannot grant access.
 2. Define a `.strict()` Zod body schema at every nested object level, plus strict query/params
    schemas. Identity, tenant, carrier and status always come from the principal or the scope — never
    from the request.
-3. If the permission is sensitive, include
-   `reason: z.string().trim().min(10).max(500).regex(/^[^\x00-\x1F\x7F]*$/)` in the schema; the
-   `AuditHook` records it (no-op in F1-05). The scan checks the bounds and control-character rule,
-   not merely the presence of a `reason` key.
+3. If the permission is sensitive, include `reason: sensitiveReasonSchema` (import it from
+   `apps/api/src/security/authz/sensitive-reason.ts`) in the schema; the `AuditHook` records it
+   (no-op in F1-05). The shared schema trims, enforces 10–500, and rejects C0/C1 controls,
+   zero-width characters (U+200B–U+200F), bidi controls (U+202A–U+202E, U+2066–U+2069) and lone
+   surrogates. The boot scan samples the complete forbidden ranges, not merely the presence of a
+   `reason` key.
 4. Query through a repository that accepts **only** an `AccessScope` and filters `tenant_id` and
    `carrier_id`/driver id together with the row id. Never `WHERE id` only. An out-of-scope row is a
    `404`, not a `403`.

@@ -27,7 +27,9 @@ import { AuthzModule } from './security/authz/authz.module.js';
         // Never log credentials (GUIDELINES §6.3) or personal data (ADR-006 U11:
         // the formatter hides phone / national id / *_enc / *_hash at any depth).
         redact: {
-          paths: ['req.headers.authorization', 'req.headers.cookie'],
+          // `reason` is also handled structurally by redactPiiLogObject; these
+          // paths cover child-logger bindings, which bypass formatters.log.
+          paths: ['req.headers.authorization', 'req.headers.cookie', 'reason', '*.reason'],
           censor: '[redacted]',
         },
         formatters: { log: redactPiiLogObject },

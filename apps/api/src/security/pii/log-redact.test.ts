@@ -156,6 +156,93 @@ describe('redactPii — auth secrets (ADR-007 A14)', () => {
     expect(out['x-api-key']).toBe(PII_REDACTED);
   });
 
+  it('redacts free-text reason at any depth but keeps the denial reasonCode visible', () => {
+    const reason = 'دلیل محرمانه تست';
+    const out = redactPii({
+      reason,
+      reasonText: reason,
+      reason_text: reason,
+      nested: { reason },
+      list: [{ reason }, { keep: 'visible' }],
+      req: { headers: { reason, 'x-reason': reason, 'x-reason-text': reason } },
+      reasonCode: 'AUTHZ_PERMISSION_DENIED',
+      reason_code: 'AUTHZ_PERMISSION_DENIED',
+    });
+
+    const text = JSON.stringify(out);
+    expect(text).not.toContain(reason);
+    expect(out.reason).toBe(PII_REDACTED);
+    expect(out.reasonText).toBe(PII_REDACTED);
+    expect(out.reason_text).toBe(PII_REDACTED);
+    expect(out.nested.reason).toBe(PII_REDACTED);
+    expect(out.list[0]?.reason).toBe(PII_REDACTED);
+    expect(out.req.headers.reason).toBe(PII_REDACTED);
+    expect(out.req.headers['x-reason']).toBe(PII_REDACTED);
+    expect(out.req.headers['x-reason-text']).toBe(PII_REDACTED);
+    expect(out.list[1]?.keep).toBe('visible');
+    expect(out.reasonCode).toBe('AUTHZ_PERMISSION_DENIED');
+    expect(out.reason_code).toBe('AUTHZ_PERMISSION_DENIED');
+  });
+
+  it('a real log call redacts reason in nested objects, arrays and headers', () => {
+    const reason = 'دلیل محرمانه تست';
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(String(chunk));
+        callback();
+      },
+    });
+    const logger = pino({ level: 'info', formatters: { log: redactPiiLogObject } }, stream);
+
+    logger.info(
+      {
+        reason,
+        reasonText: reason,
+        nested: { reason },
+        list: [{ reason }],
+        req: { headers: { 'x-reason': reason } },
+        reasonCode: 'AUTHZ_PERMISSION_DENIED',
+        reason_code: 'AUTHZ_PERMISSION_DENIED',
+      },
+      'reason redaction probe',
+    );
+
+    const output = chunks.join('');
+    expect(output).not.toContain(reason);
+    expect(output).toContain(PII_REDACTED);
+    expect(output).toContain('AUTHZ_PERMISSION_DENIED');
+    expect(output).toContain('reason redaction probe');
+  });
+
+  it('a child logger binding carrying reason is redacted too', () => {
+    const reason = 'دلیل محرمانه تست';
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(String(chunk));
+        callback();
+      },
+    });
+    const logger = pino(
+      {
+        level: 'info',
+        redact: {
+          paths: ['reason', '*.reason'],
+          censor: '[redacted]',
+        },
+        formatters: { log: redactPiiLogObject },
+      },
+      stream,
+    );
+
+    logger.child({ reason }).info('child reason probe');
+
+    const output = chunks.join('');
+    expect(output).not.toContain(reason);
+    expect(output).toContain('child reason probe');
+  });
+
   it('a real log call with a password/token/cookie header and otp/code keys writes [Redacted]', () => {
     const chunks: string[] = [];
     const stream = new Writable({

@@ -296,5 +296,11 @@ describe('invalid markers at runtime (C5/C6)', () => {
         JSON.stringify({ error: { code: 'FORBIDDEN', message: 'دسترسی مجاز نیست' } }),
       );
     }
+    // T06: no denial body may leak the permission name, a role code or reason.
+    const serialized = JSON.stringify(bodies.map((body) => body.body));
+    expect(serialized).not.toContain('destination.read');
+    expect(serialized).not.toContain('FACTORY_OPERATOR');
+    expect(serialized).not.toContain('CARRIER_ADMIN');
+    expect(serialized).not.toContain('DRIVER');
   });
 });

@@ -1,6 +1,7 @@
 import { API_PREFIX } from '@bitabar/shared';
 
 import { isPermissionName, isSensitivePermission } from './permissions.js';
+import { FORBIDDEN_REASON_RANGES } from './sensitive-reason.js';
 
 /**
  * Route-scan rules (ADR-008 Z3/Z5/Z10/Z13; CP1 GB-03/GB-04, RD-03, SA-05).
@@ -156,8 +157,9 @@ export function canonicalRoutePath(
 
 /**
  * True only when the schema's `reason` field is required, trims, is bounded to
- * 10–500 and rejects control characters (CP1 SA-05 / SA-02). The field schema
- * is inspected directly, so unrelated required body fields do not matter.
+ * 10–500 and rejects the COMPLETE C0/C1, zero-width, bidi and lone-surrogate
+ * set (CP1 SA-05 / SA-02). The field schema is inspected directly, so unrelated
+ * required body fields do not matter.
  */
 export function reasonSchemaIsValid(schema: unknown): boolean {
   const field = reasonFieldSchema(schema);
@@ -187,11 +189,23 @@ export function reasonSchemaIsValid(schema: unknown): boolean {
     ' '.repeat(10),
     // Raw length 10, trimmed length 6: proves the bounds run AFTER trim.
     `  ${'i'.repeat(6)}  `,
-    `${'e'.repeat(5)}\nf${'e'.repeat(4)}`,
-    `${'g'.repeat(5)}\u0000${'g'.repeat(5)}`,
-    `${'h'.repeat(5)}\u007f${'h'.repeat(5)}`,
   ];
-  return invalidValues.every((value) => !field.safeParse(value).success);
+  if (!invalidValues.every((value) => !field.safeParse(value).success)) {
+    return false;
+  }
+  // Exhaustive proof over the documented ranges, not a few representatives.
+  for (const [start, end] of FORBIDDEN_REASON_RANGES) {
+    for (let codePoint = start; codePoint <= end; codePoint += 1) {
+      const candidate = `${'x'.repeat(5)}${String.fromCodePoint(codePoint)}${'y'.repeat(5)}`;
+      if (field.safeParse(candidate).success) {
+        return false;
+      }
+    }
+  }
+  // Normal Persian text and emoji must still be accepted.
+  return [`${'z'.repeat(10)}`, 'دلیل تست شماره یک', '😀'.repeat(10)].every(
+    (value) => field.safeParse(value).success,
+  );
 }
 
 interface ReasonField {

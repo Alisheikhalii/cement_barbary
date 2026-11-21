@@ -26,10 +26,24 @@ export const PII_CIRCULAR = '[Circular]';
  * `tenantCode` is part of the public login identifier and is needed for
  * spray-detection observability (T06).
  */
-const CODE_KEY_ALLOWLIST = new Set(['errorcode', 'statuscode', 'tenantcode']);
+const CODE_KEY_ALLOWLIST = new Set([
+  'errorcode',
+  'statuscode',
+  'tenantcode',
+  // Guard denials log this stable reason CODE (not the free-text reason).
+  'reasoncode',
+  'reason_code',
+  'reason-code',
+  'x-reason-code',
+  'x_reason_code',
+]);
 
 function isPiiKey(key: string): boolean {
   const k = key.toLowerCase();
+  // Operational code keys win over the generic `reason`/`code` rules.
+  if (CODE_KEY_ALLOWLIST.has(k)) {
+    return false;
+  }
   return (
     // PII (ADR-006 U11)
     k.includes('phone') || // phone, phoneNumber, phone_number, driverPhone, …
@@ -56,7 +70,14 @@ function isPiiKey(key: string): boolean {
     (k.endsWith('code') && !CODE_KEY_ALLOWLIST.has(k)) || // code, smsCode, verification_code, …
     k.includes('authorization') ||
     k.includes('cookie') ||
-    k.includes('credential')
+    k.includes('credential') ||
+    // Free-text sensitive-action reason (ADR-008 Z10): never pino-logged.
+    // Any key containing `reason` is covered (`denialReason`, `reasonText`,
+    // `reason_text`, `x-reason`, `x-reason-text`); operation code variants are
+    // allowlisted above. A reason logged as a bare string or under an unrelated
+    // key (`detail`, `messages: [reason]`) cannot be detected structurally —
+    // the contract forbids logging it that way.
+    k.includes('reason')
   );
 }
 
