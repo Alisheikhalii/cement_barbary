@@ -2,8 +2,8 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — **F1-04 (احراز هویت) کامل شد: T01–T09 Commit شد؛ منتظر اجازه مالک برای Push + Tag v0.1.4**؛ F1-03 کامل (tag v0.1.3) | آخرین Tag: **v0.1.3** | آخرین Commit: **T09 (محلی)**
-- CI: **سبز** (آخرین run روی main: gitleaks تاریخچه کامل، lint/typecheck/test/int/build/audit، compose-config) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۳۰
+- فاز فعلی: **F1** — **F1-04 (احراز هویت) کامل و منتشر شد (T01–T09 + اصلاحات بازبینی؛ Push شد، tag v0.1.4)**؛ F1-03 کامل (tag v0.1.3) | آخرین Tag: **v0.1.4** | آخرین Commit: **d3c6dd8 – fix(auth): close F1-04 phase review findings**
+- CI: **سبز** (run 44868692952 روی main @ d3c6dd8: Compose config، Lint/typecheck/test/build/audit، Secret scan؛ job «Commit messages» skipped) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۸/۳۰
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
 ## ۲. نقشه پروژه (فقط خلاصه)
