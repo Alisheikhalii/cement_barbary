@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { DomainError } from '../../common/errors/domain-error.js';
 import { AuthorizationGuard } from './authorization.guard.js';
-import { REQUIRE_PERMISSION_KEY } from './decorators.js';
+import { IS_PUBLIC_KEY, REQUIRE_PERMISSION_KEY } from './decorators.js';
 
 /**
  * CP1 SA-03: a guard denial is logged server-side with the request id and a
@@ -29,7 +29,7 @@ describe('AuthorizationGuard denial logging', () => {
   it('logs only the request id and reason code', () => {
     const warn = vi.fn();
     const logger = { setContext: vi.fn(), warn } as unknown as PinoLogger;
-    const guard = new AuthorizationGuard(new Reflector(), logger);
+    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, logger);
 
     const handler = (): void => undefined;
     Reflect.defineMetadata(REQUIRE_PERMISSION_KEY, 'destination.read', handler);
@@ -69,7 +69,7 @@ describe('AuthorizationGuard denial logging', () => {
   it('uses the marker-count reason code for an unmarked route', () => {
     const warn = vi.fn();
     const logger = { setContext: vi.fn(), warn } as unknown as PinoLogger;
-    const guard = new AuthorizationGuard(new Reflector(), logger);
+    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, logger);
     const handler = (): void => undefined;
     const request: Record<string, unknown> = {
       id: 'req-8',
@@ -88,5 +88,30 @@ describe('AuthorizationGuard denial logging', () => {
       { reqId: 'req-8', reasonCode: 'AUTHZ_MARKER_COUNT' },
       'authorization denied',
     );
+  });
+
+  it('accepts the unprefixed public form only outside production', () => {
+    const handler = (): void => undefined;
+    Reflect.defineMetadata(IS_PUBLIC_KEY, true, handler);
+    const request: Record<string, unknown> = {
+      id: 'req-9',
+      method: 'POST',
+      originalUrl: '/auth/login',
+    };
+
+    const testGuard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, {
+      setContext: vi.fn(),
+      warn: vi.fn(),
+    } as unknown as PinoLogger);
+    expect(testGuard.canActivate(contextFor(handler, request))).toBe(true);
+
+    const productionGuard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'production' }, {
+      setContext: vi.fn(),
+      warn: vi.fn(),
+    } as unknown as PinoLogger);
+    expect(() => productionGuard.canActivate(contextFor(handler, request))).toThrow(DomainError);
+
+    request.originalUrl = '/api/v1/auth/login';
+    expect(productionGuard.canActivate(contextFor(handler, request))).toBe(true);
   });
 });

@@ -5,6 +5,8 @@ import type { Request } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 
 import { DomainError } from '../../common/errors/domain-error.js';
+import { APP_CONFIG } from '../../config/config.module.js';
+import type { AppConfig } from '../../config/env.js';
 import { can } from './can.js';
 import {
   hasClassLevelAccessMarker,
@@ -42,6 +44,7 @@ interface AuthorizedRequest extends Request {
 export class AuthorizationGuard implements CanActivate {
   constructor(
     @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'nodeEnv'>,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(AuthorizationGuard.name);
@@ -71,7 +74,9 @@ export class AuthorizationGuard implements CanActivate {
 
     if (isPublic) {
       // CP1 GB-03: a public route is valid only on the reviewed §D allowlist.
-      if (!isAllowlistedPublicRoute(request.method, request.originalUrl)) {
+      // Production accepts canonical paths only; dev/test also accept the
+      // unprefixed form (direct controller mounting).
+      if (!isAllowlistedPublicRoute(request.method, request.originalUrl, this.config.nodeEnv)) {
         return this.deny(request, 'AUTHZ_PUBLIC_NOT_ALLOWLISTED');
       }
       return true;

@@ -78,12 +78,29 @@ export function markerCount(route: ScannedRoute): number {
 }
 
 /**
- * Method + path comparison for the runtime public-route check. Accepts the
- * canonical prefixed path (`/api/v1/auth/login`), the unprefixed path used by
- * tests and direct controller mounting (`/auth/login`), plus a trailing slash.
+ * Method + path comparison for the runtime public-route check. The canonical
+ * list is exact and case-sensitive. In production ONLY the canonical paths are
+ * accepted; development/test also accept the unprefixed form used by direct
+ * controller mounting (`/auth/login`). A malformed path (`..`, `%2e`, `%2f`,
+ * `;param`, a different case) never matches and is rejected by the guard.
  */
-export function isAllowlistedPublicRoute(method: string, rawPath: string): boolean {
+export function isAllowlistedPublicRoute(
+  method: string,
+  rawPath: string,
+  environment: ScanEnvironment,
+): boolean {
   const path = normalizeRequestPath(rawPath);
+  const normalizedMethod = method.toUpperCase();
+  const matches = (candidate: string): boolean =>
+    PUBLIC_ROUTE_ALLOWLIST.some(
+      (entry) => entry.method === normalizedMethod && entry.path === candidate,
+    );
+  if (matches(path)) {
+    return true;
+  }
+  if (environment === 'production') {
+    return false;
+  }
   const candidates = [path];
   if (path.startsWith(API_PREFIX)) {
     const stripped = path.slice(API_PREFIX.length);
@@ -91,16 +108,15 @@ export function isAllowlistedPublicRoute(method: string, rawPath: string): boole
   } else {
     candidates.push(`${API_PREFIX}${path}`);
   }
-  const normalizedMethod = method.toUpperCase();
-  return PUBLIC_ROUTE_ALLOWLIST.some(
-    (entry) => entry.method === normalizedMethod && candidates.includes(entry.path),
-  );
+  return candidates.some(matches);
 }
 
 function normalizeRequestPath(rawPath: string): string {
   const withoutQuery = rawPath.split('?')[0] ?? '/';
-  const collapsed = `/${withoutQuery}`.replaceAll(/\/+/g, '/');
-  return collapsed.length > 1 && collapsed.endsWith('/') ? collapsed.slice(0, -1) : collapsed;
+  // Preserve internal empty segments: `//api/v1/...` is NOT the canonical
+  // route and must not become public merely because the guard collapsed it.
+  const path = withoutQuery.startsWith('/') ? withoutQuery : `/${withoutQuery}`;
+  return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
 }
 
 /** Normalizes Nest path metadata (`undefined`, `'/'`, arrays) into `a/b`. */
@@ -227,7 +243,7 @@ export function scanRoutes(
         detail: `expected exactly one access marker, found ${count}`,
       });
     }
-    if (route.isPublic && !isAllowlistedPublicRoute(route.method, route.path)) {
+    if (route.isPublic && !isAllowlistedPublicRoute(route.method, route.path, environment)) {
       issues.push({
         code: 'AUTHZ_PUBLIC_NOT_ALLOWLISTED',
         route: routeName,

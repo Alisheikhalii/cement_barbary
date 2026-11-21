@@ -122,15 +122,34 @@ describe('route scan — public allowlist (GB-03)', () => {
   });
 
   it('matches prefixed, unprefixed and trailing-slash request paths, and the method', () => {
-    expect(isAllowlistedPublicRoute('POST', '/api/v1/auth/login')).toBe(true);
-    expect(isAllowlistedPublicRoute('POST', '/auth/login')).toBe(true);
-    expect(isAllowlistedPublicRoute('POST', '/api/v1/auth/login/')).toBe(true);
-    expect(isAllowlistedPublicRoute('post', '/api/v1/auth/login?x=1')).toBe(true);
-    expect(isAllowlistedPublicRoute('GET', '/health/live')).toBe(true);
-    expect(isAllowlistedPublicRoute('GET', '/auth/login')).toBe(false);
-    expect(isAllowlistedPublicRoute('DELETE', '/health/live')).toBe(false);
-    expect(isAllowlistedPublicRoute('POST', '/auth/login/extra')).toBe(false);
-    expect(isAllowlistedPublicRoute('GET', '/api/v1/auth/me')).toBe(false);
+    expect(isAllowlistedPublicRoute('POST', '/api/v1/auth/login', 'production')).toBe(true);
+    expect(isAllowlistedPublicRoute('POST', '/auth/login', 'production')).toBe(false);
+    expect(isAllowlistedPublicRoute('POST', '/auth/login', 'test')).toBe(true);
+    expect(isAllowlistedPublicRoute('POST', '/api/v1/auth/login', 'test')).toBe(true);
+    expect(isAllowlistedPublicRoute('POST', '/api/v1/auth/login/', 'test')).toBe(true);
+    expect(isAllowlistedPublicRoute('post', '/api/v1/auth/login?x=1', 'test')).toBe(true);
+    expect(isAllowlistedPublicRoute('GET', '/health/live', 'production')).toBe(true);
+    expect(isAllowlistedPublicRoute('GET', '/auth/login', 'test')).toBe(false);
+    expect(isAllowlistedPublicRoute('DELETE', '/health/live', 'test')).toBe(false);
+    expect(isAllowlistedPublicRoute('POST', '/auth/login/extra', 'test')).toBe(false);
+    expect(isAllowlistedPublicRoute('GET', '/api/v1/auth/me', 'test')).toBe(false);
+    // Production is canonical-only and case-sensitive.
+    expect(isAllowlistedPublicRoute('POST', '/API/V1/AUTH/LOGIN', 'production')).toBe(false);
+    expect(isAllowlistedPublicRoute('POST', '/auth/login', 'development')).toBe(true);
+    // Path confusion: malformed forms are never allowlisted.
+    for (const environment of ['test', 'production'] as const) {
+      for (const path of [
+        '/api/v1/auth/login/../me',
+        '/api/v1/auth/login/%2e%2e/me',
+        '/api/v1/auth/login%2F..%2Fme',
+        '/api/v1/auth/login;foo=bar',
+        '//api/v1/auth/login',
+        '/api/v1/auth/login.',
+        '/api/v1/auth/login/..',
+      ]) {
+        expect(isAllowlistedPublicRoute('POST', path, environment), path).toBe(false);
+      }
+    }
   });
 });
 
