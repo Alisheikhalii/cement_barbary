@@ -7,6 +7,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { DomainError } from '../../common/errors/domain-error.js';
 import { APP_CONFIG } from '../../config/config.module.js';
 import type { AppConfig } from '../../config/env.js';
+import { AuthzFreshness } from '../../db/authz-freshness.js';
 import { can } from './can.js';
 import {
   hasClassLevelAccessMarker,
@@ -14,7 +15,7 @@ import {
   IS_SELF_SERVICE_KEY,
   REQUIRE_PERMISSION_KEY,
 } from './decorators.js';
-import { isPermissionName } from './permissions.js';
+import { isPermissionName, isSensitivePermission } from './permissions.js';
 import { createPrincipal, type Principal } from './principal.js';
 import { isAllowlistedPublicRoute, type GuardDenialReason } from './route-scan.js';
 
@@ -45,12 +46,13 @@ export class AuthorizationGuard implements CanActivate {
   constructor(
     @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'nodeEnv'>,
+    @Inject(AuthzFreshness) private readonly freshness: AuthzFreshness,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(AuthorizationGuard.name);
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthorizedRequest>();
     const handler = context.getHandler();
     const controller = context.getClass();
@@ -94,6 +96,31 @@ export class AuthorizationGuard implements CanActivate {
     if (typeof permissionMetadata !== 'string' || !isPermissionName(permissionMetadata)) {
       return this.deny(request, 'AUTHZ_UNKNOWN_PERMISSION');
     }
+    if (isSensitivePermission(permissionMetadata)) {
+      // Z6/SR-06: fresh user/tenant/session/roles read. Only the intersection
+      // of the token roles and DB roles can act; a dead session, disabled
+      // user or suspended tenant is a generic 401 before any handler runs.
+      const fresh = await this.freshness.read({
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        sessionId: principal.sessionId,
+      });
+      if (!fresh.userActive || !fresh.tenantActive || !fresh.sessionLive) {
+        return this.denyUnauthorized(request, 'AUTHZ_FRESHNESS_DENIED');
+      }
+      const dbRoles = new Set(fresh.roles);
+      const effective = createPrincipal({
+        userId: principal.userId,
+        tenantId: principal.tenantId,
+        sessionId: principal.sessionId,
+        roles: principal.roles.filter((role) => dbRoles.has(role)),
+        ...(principal.carrierId === undefined ? {} : { carrierId: principal.carrierId }),
+      });
+      if (!can(effective, permissionMetadata)) {
+        return this.deny(request, 'AUTHZ_PERMISSION_DENIED');
+      }
+      return true;
+    }
     if (!can(principal, permissionMetadata)) {
       return this.deny(request, 'AUTHZ_PERMISSION_DENIED');
     }
@@ -121,5 +148,11 @@ export class AuthorizationGuard implements CanActivate {
   private deny(request: AuthorizedRequest, reasonCode: GuardDenialReason): never {
     this.logger.warn({ reqId: request.id ?? null, reasonCode }, 'authorization denied');
     throw DomainError.forbidden();
+  }
+
+  /** Freshness failure: generic 401, never a 403 that reveals account state. */
+  private denyUnauthorized(request: AuthorizedRequest, reasonCode: GuardDenialReason): never {
+    this.logger.warn({ reqId: request.id ?? null, reasonCode }, 'authorization denied');
+    throw DomainError.unauthorized();
   }
 }

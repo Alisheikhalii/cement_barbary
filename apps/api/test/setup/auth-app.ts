@@ -1,4 +1,4 @@
-import { RequestMethod } from '@nestjs/common';
+import { RequestMethod, type Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { API_PREFIX } from '@bitabar/shared';
@@ -10,17 +10,21 @@ import { AppModule } from '../../src/app.module.js';
 /**
  * Boots the real AppModule against the shared integration container, with the
  * same global prefix and Helmet as main.ts. `env` overrides (rate limits, …)
- * are applied BEFORE the config module parses process.env.
+ * are applied BEFORE the config module parses process.env. Extra modules are
+ * for test-only probe controllers (e.g. the sensitive-authorization route).
  */
 export async function buildAuthApp(
   env: Record<string, string> = {},
+  extraModules: readonly Type[] = [],
 ): Promise<NestExpressApplication> {
   Object.assign(process.env, {
     DATABASE_URL: inject('appUrl'),
     NODE_ENV: 'test',
     ...env,
   });
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule, ...extraModules],
+  }).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   app.use(helmet());
   app.setGlobalPrefix(API_PREFIX, {

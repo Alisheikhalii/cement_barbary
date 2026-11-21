@@ -2,10 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { DomainError } from '../../common/errors/domain-error.js';
 import { authSessions } from '../../db/schema/auth-sessions.js';
+import { tenants } from '../../db/schema/tenants.js';
+import { userRoles } from '../../db/schema/user-roles.js';
 import { users } from '../../db/schema/users.js';
 import { and, eq, gt, isNull, ne } from '../../db/sql.js';
 import { TenantContext } from '../../db/tenant-context.js';
 import { TenantDb, type Tx } from '../../db/tenant-db.js';
+import type { AssignableRole } from '../users/users.types.js';
 import { constantTimeEquals } from './refresh-token.js';
 
 /**
@@ -40,8 +43,15 @@ export interface RotateSessionInput {
  * inside the same transaction.
  */
 export type RotateOutcome =
-  | { readonly outcome: 'rotated'; readonly familyId: string; readonly userId: string }
+  | {
+      readonly outcome: 'rotated';
+      readonly familyId: string;
+      readonly userId: string;
+      /** Roles read in the SAME transaction as the rotation (Z7a). */
+      readonly roles: readonly AssignableRole[];
+    }
   | { readonly outcome: 'reuse'; readonly familyId: string; readonly revokedSessions: number }
+  | { readonly outcome: 'inactive' }
   | { readonly outcome: 'missing' | 'revoked' | 'expired' | 'mismatch' };
 
 @Injectable()
@@ -110,23 +120,106 @@ export class SessionRepository {
   }
 
   /**
-   * Atomically rotates a live session's refresh hash (A8/A9). The conditional
-   * UPDATE is the serialization point: under PostgreSQL's row lock exactly one
-   * of N concurrent replays matches `refresh_hash = oldHash`; every other one
-   * re-checks against the committed row and fails. A loser whose presented
-   * hash is now `previous_refresh_hash` is a REUSE — the whole family is
-   * revoked in this same transaction.
+   * Atomically rotates a live session's refresh hash (A8/A9) AND reads the
+   * account state and roles in the SAME transaction (Z7a). The user row is
+   * locked FOR UPDATE, so a concurrent role change (which locks the same row
+   * before writing) either commits before this read or waits until after the
+   * rotation and then revokes the session.
    *
-   * Tenant/user status is deliberately not re-read here: RLS scopes the row to
-   * the tenant, and the A18 freshness check (disabled/deleted user) runs in
-   * the T06 refresh service before rotation. Only the immediately previous hash
-   * is retained (A8), so older replays are indistinguishable from unknown
-   * tokens — unused, but no family revocation.
+   * The conditional UPDATE remains the serialization point for concurrent
+   * refreshes. A loser whose presented hash is now `previous_refresh_hash` is
+   * a REUSE — the whole family is revoked in this same transaction.
    */
   async rotate(input: RotateSessionInput): Promise<RotateOutcome> {
     const tenantId = this.tenantId();
     return this.tenantDb.run(async (tx) => {
       const now = new Date();
+      const sessionRows = await tx
+        .select({
+          userId: authSessions.userId,
+          familyId: authSessions.familyId,
+          refreshHash: authSessions.refreshHash,
+          previousRefreshHash: authSessions.previousRefreshHash,
+          revokedAt: authSessions.revokedAt,
+          expiresAt: authSessions.expiresAt,
+        })
+        .from(authSessions)
+        .where(and(eq(authSessions.tenantId, tenantId), eq(authSessions.id, input.sessionId)))
+        .limit(1);
+      const session = sessionRows[0];
+      if (!session) {
+        return { outcome: 'missing' };
+      }
+      if (session.revokedAt !== null) {
+        return { outcome: 'revoked' };
+      }
+      if (session.expiresAt.getTime() <= now.getTime()) {
+        return { outcome: 'expired' };
+      }
+
+      // A token that is already rotated out is reuse, regardless of account
+      // state: revoke the family without revealing anything to the client.
+      if (!constantTimeEquals(session.refreshHash, input.oldHash)) {
+        if (
+          session.previousRefreshHash !== null &&
+          constantTimeEquals(session.previousRefreshHash, input.oldHash)
+        ) {
+          const revoked = await this.revokeFamilyInTx(
+            tx,
+            tenantId,
+            session.familyId,
+            'reuse_detected',
+            now,
+          );
+          return {
+            outcome: 'reuse',
+            familyId: session.familyId,
+            revokedSessions: revoked,
+          };
+        }
+        return { outcome: 'mismatch' };
+      }
+
+      // A18/Z7a: account and tenant freshness in this transaction. The user
+      // row lock serializes against UsersRepository role writes.
+      const userRows = await tx
+        .select({ status: users.status, deletedAt: users.deletedAt })
+        .from(users)
+        .where(and(eq(users.tenantId, tenantId), eq(users.id, session.userId)))
+        .for('update');
+      const user = userRows[0];
+      const tenantRows = await tx
+        .select({ status: tenants.status, deletedAt: tenants.deletedAt })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      const tenant = tenantRows[0];
+      if (
+        !user ||
+        user.status !== 'active' ||
+        user.deletedAt !== null ||
+        !tenant ||
+        tenant.status !== 'active' ||
+        tenant.deletedAt !== null
+      ) {
+        await tx
+          .update(authSessions)
+          .set({ revokedAt: now, revokeReason: 'disabled' })
+          .where(
+            and(
+              eq(authSessions.tenantId, tenantId),
+              eq(authSessions.id, input.sessionId),
+              isNull(authSessions.revokedAt),
+            ),
+          );
+        return { outcome: 'inactive' };
+      }
+
+      const roleRows = await tx
+        .select({ roleCode: userRoles.roleCode })
+        .from(userRoles)
+        .where(and(eq(userRoles.tenantId, tenantId), eq(userRoles.userId, session.userId)));
+
       const updated = await tx
         .update(authSessions)
         .set({
@@ -155,10 +248,16 @@ export class SessionRepository {
         });
       const rotated = updated[0];
       if (rotated) {
-        return { outcome: 'rotated', familyId: rotated.familyId, userId: rotated.userId };
+        return {
+          outcome: 'rotated',
+          familyId: rotated.familyId,
+          userId: rotated.userId,
+          roles: roleRows.map((row) => row.roleCode as AssignableRole),
+        };
       }
 
-      const rows = await tx
+      // A concurrent rotation won after our pre-read; re-check for reuse.
+      const afterRows = await tx
         .select({
           familyId: authSessions.familyId,
           previousRefreshHash: authSessions.previousRefreshHash,
@@ -168,28 +267,28 @@ export class SessionRepository {
         .from(authSessions)
         .where(and(eq(authSessions.tenantId, tenantId), eq(authSessions.id, input.sessionId)))
         .limit(1);
-      const session = rows[0];
-      if (!session) {
+      const after = afterRows[0];
+      if (!after) {
         return { outcome: 'missing' };
       }
-      if (session.revokedAt !== null) {
+      if (after.revokedAt !== null) {
         return { outcome: 'revoked' };
       }
-      if (session.expiresAt.getTime() <= now.getTime()) {
+      if (after.expiresAt.getTime() <= now.getTime()) {
         return { outcome: 'expired' };
       }
       if (
-        session.previousRefreshHash !== null &&
-        constantTimeEquals(session.previousRefreshHash, input.oldHash)
+        after.previousRefreshHash !== null &&
+        constantTimeEquals(after.previousRefreshHash, input.oldHash)
       ) {
         const revoked = await this.revokeFamilyInTx(
           tx,
           tenantId,
-          session.familyId,
+          after.familyId,
           'reuse_detected',
           now,
         );
-        return { outcome: 'reuse', familyId: session.familyId, revokedSessions: revoked };
+        return { outcome: 'reuse', familyId: after.familyId, revokedSessions: revoked };
       }
       return { outcome: 'mismatch' };
     });

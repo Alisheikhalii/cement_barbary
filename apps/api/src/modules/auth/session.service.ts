@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { AuthLookupService } from '../../db/auth-lookup.service.js';
 import { TenantContext } from '../../db/tenant-context.js';
-import { AuthRepository } from './auth.repository.js';
+import type { AssignableRole } from '../users/users.types.js';
 import { generateRefreshToken, hashRefreshToken, isRefreshTokenShape } from './refresh-token.js';
 import { SessionRepository } from './session.repository.js';
 
@@ -39,6 +39,8 @@ export interface IssuedSession {
 export interface RotatedSession extends IssuedSession {
   readonly tenantId: string;
   readonly userId: string;
+  /** Roles read in the rotation transaction; the new token must use these. */
+  readonly roles: readonly AssignableRole[];
 }
 
 @Injectable()
@@ -47,7 +49,6 @@ export class SessionService {
     @Inject(AuthLookupService) private readonly lookup: AuthLookupService,
     @Inject(TenantContext) private readonly tenantContext: TenantContext,
     @Inject(SessionRepository) private readonly sessions: SessionRepository,
-    @Inject(AuthRepository) private readonly accounts: AuthRepository,
   ) {}
 
   /**
@@ -101,18 +102,6 @@ export class SessionService {
     if (found.revokedAt !== null || found.expiresAt.getTime() <= Date.now()) {
       return null;
     }
-    // A18: a disabled/deleted user or a suspended/deleted tenant fails now,
-    // with the generic failure, and the session is revoked so it cannot be
-    // retried later.
-    const active = await this.tenantContext.run({ tenantId: found.tenantId }, () =>
-      this.accounts.isAccountActive(found.userId),
-    );
-    if (!active) {
-      await this.tenantContext.run({ tenantId: found.tenantId }, () =>
-        this.sessions.revokeSession(found.sessionId, 'disabled'),
-      );
-      return null;
-    }
 
     const refreshToken = generateRefreshToken();
     const result = await this.tenantContext.run({ tenantId: found.tenantId }, () =>
@@ -130,6 +119,7 @@ export class SessionService {
         familyId: result.familyId,
         tenantId: found.tenantId,
         userId: result.userId,
+        roles: result.roles,
         refreshToken,
         refreshExpiresAt: found.expiresAt,
       };
@@ -139,6 +129,7 @@ export class SessionService {
       // a concurrent loser must still get the generic failure.
       return null;
     }
+    // 'inactive' already revoked the session inside the rotation transaction.
     return null;
   }
 

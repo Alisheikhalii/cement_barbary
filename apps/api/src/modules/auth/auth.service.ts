@@ -152,10 +152,10 @@ export class AuthService {
     if (rotated === null) {
       throw DomainError.unauthorized();
     }
-    // A18: roles are re-read on every refresh, never trusted from the old token.
-    const roles = await this.tenantContext.run({ tenantId: rotated.tenantId }, () =>
-      this.accounts.getRoles(rotated.userId),
-    );
+    // Z7a: roles and account status were read in the SAME transaction as the
+    // rotation; the new access token reflects exactly the DB role set at that
+    // point, never a separate read after the rotation committed.
+    const roles = rotated.roles;
     const accessToken = await this.tokens.signAccessToken({
       userId: rotated.userId,
       tenantId: rotated.tenantId,

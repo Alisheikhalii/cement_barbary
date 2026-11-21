@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 
 import { AuthLookupService } from './auth-lookup.service.js';
+import { AuthzFreshness } from './authz-freshness.js';
 import { CredentialFailureStore } from './credential-failure-store.js';
 import { databaseProviders, DB, PG_POOL } from './database.providers.js';
 import { DbHealth } from './db-health.js';
@@ -21,6 +22,7 @@ import { TenantDb } from './tenant-db.js';
     TenantContext,
     TenantDb,
     AuthLookupService,
+    AuthzFreshness,
     RateLimitStore,
     CredentialFailureStore,
   ],
@@ -31,6 +33,7 @@ import { TenantDb } from './tenant-db.js';
     TenantContext,
     TenantDb,
     AuthLookupService,
+    AuthzFreshness,
     RateLimitStore,
     CredentialFailureStore,
   ],

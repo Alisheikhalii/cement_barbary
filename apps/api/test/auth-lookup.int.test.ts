@@ -587,8 +587,8 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
   });
 
   it('session lookup resolves suspended-tenant sessions so A18 can revoke them', async () => {
-    // 0008: the tenant status is enforced in SessionService.rotate(), not here;
-    // returning the row is what lets the flow revoke it (review M1).
+    // 0008: the tenant status is enforced in SessionRepository.rotate(), not
+    // here; returning the row is what lets the flow revoke it (review M1).
     const suspended = await authLookupSession(db(), suspendedRefreshHash);
     expect(suspended?.tenantId).toBe(suspendedTenant);
     const revoked = await authLookupSession(db(), revokedRefreshHash);

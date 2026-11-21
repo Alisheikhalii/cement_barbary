@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 
 import { DomainError } from '../../common/errors/domain-error.js';
+import { authSessions } from '../../db/schema/auth-sessions.js';
 import { userRoles } from '../../db/schema/user-roles.js';
 import { users } from '../../db/schema/users.js';
 import { and, eq, isNull } from '../../db/sql.js';
 import { TenantContext } from '../../db/tenant-context.js';
-import { TenantDb } from '../../db/tenant-db.js';
+import { TenantDb, type Tx } from '../../db/tenant-db.js';
 import { maskPhone } from '../../security/pii/mask.js';
 import { normalizePhone } from '../../security/pii/normalize.js';
 import { buildAad, PiiService } from '../../security/pii/pii-crypto.js';
@@ -226,6 +227,10 @@ export class UsersRepository {
    * roles like PLATFORM_ADMIN → BAD_INPUT). The scope copy is re-verified by
    * the composite FK on write. Linking another tenant's user fails the FK and
    * surfaces as BAD_INPUT. Idempotent: re-assigning is a no-op.
+   *
+   * Z7b: when the link is actually added, every live session of that user is
+   * revoked in the SAME transaction, under a FOR UPDATE lock on the user row.
+   * A role change can therefore never ride an old token or a concurrent refresh.
    */
   async assignRole(userId: string, roleCode: string): Promise<void> {
     if (!userIdSchema.safeParse(userId).success) {
@@ -248,20 +253,28 @@ export class UsersRepository {
             .select({ id: users.id })
             .from(users)
             .where(and(eq(users.tenantId, tenantId), eq(users.id, userId), isNull(users.deletedAt)))
-            .limit(1);
+            .for('update');
           if (!live[0]) {
             throw DomainError.badInput();
           }
-          await tx
+          const inserted = await tx
             .insert(userRoles)
             .values({ tenantId, userId, roleCode: code, roleScope: ROLE_SCOPE[code] })
-            .onConflictDoNothing();
+            .onConflictDoNothing()
+            .returning({ userId: userRoles.userId });
+          if (inserted.length > 0) {
+            await this.revokeSessionsInTx(tx, tenantId, userId);
+          }
         }),
       { '23503': () => DomainError.badInput() },
     );
   }
 
-  /** Revokes a role (hard delete of the link — allowed by U13). True when a link was removed. */
+  /**
+   * Revokes a role (hard delete of the link — allowed by U13). True when a
+   * link was removed. Z7b: a real removal revokes every live session of the
+   * user in the same transaction.
+   */
   async revokeRole(userId: string, roleCode: string): Promise<boolean> {
     if (!userIdSchema.safeParse(userId).success) {
       throw DomainError.badInput();
@@ -271,9 +284,17 @@ export class UsersRepository {
       throw DomainError.badInput();
     }
     const tenantId = this.tenantId();
-    const result = await this.runGuarded(() =>
-      this.tenantDb.run((tx) =>
-        tx
+    return this.runGuarded(() =>
+      this.tenantDb.run(async (tx) => {
+        const live = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.tenantId, tenantId), eq(users.id, userId), isNull(users.deletedAt)))
+          .for('update');
+        if (!live[0]) {
+          return false;
+        }
+        const result = await tx
           .delete(userRoles)
           .where(
             and(
@@ -281,10 +302,28 @@ export class UsersRepository {
               eq(userRoles.userId, userId),
               eq(userRoles.roleCode, parsed.data),
             ),
-          ),
-      ),
+          );
+        const removed = (result.rowCount ?? 0) > 0;
+        if (removed) {
+          await this.revokeSessionsInTx(tx, tenantId, userId);
+        }
+        return removed;
+      }),
     );
-    return (result.rowCount ?? 0) > 0;
+  }
+
+  /** Z7b: all live sessions die with a role change, in the same transaction. */
+  private async revokeSessionsInTx(tx: Tx, tenantId: string, userId: string): Promise<void> {
+    await tx
+      .update(authSessions)
+      .set({ revokedAt: new Date(), revokeReason: 'role_change' })
+      .where(
+        and(
+          eq(authSessions.tenantId, tenantId),
+          eq(authSessions.userId, userId),
+          isNull(authSessions.revokedAt),
+        ),
+      );
   }
 
   /** The role codes a user holds in the current tenant (FK guarantees catalog membership). */

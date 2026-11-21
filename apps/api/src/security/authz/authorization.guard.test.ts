@@ -6,8 +6,12 @@ import type { PinoLogger } from 'nestjs-pino';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DomainError } from '../../common/errors/domain-error.js';
+import type { AuthzFreshness } from '../../db/authz-freshness.js';
 import { AuthorizationGuard } from './authorization.guard.js';
 import { IS_PUBLIC_KEY, REQUIRE_PERMISSION_KEY } from './decorators.js';
+
+const freshnessRead = vi.fn();
+const freshness = { read: freshnessRead } as unknown as AuthzFreshness;
 
 /**
  * CP1 SA-03: a guard denial is logged server-side with the request id and a
@@ -26,10 +30,10 @@ function contextFor(handler: () => void, request: Record<string, unknown>): Exec
 }
 
 describe('AuthorizationGuard denial logging', () => {
-  it('logs only the request id and reason code', () => {
+  it('logs only the request id and reason code', async () => {
     const warn = vi.fn();
     const logger = { setContext: vi.fn(), warn } as unknown as PinoLogger;
-    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, logger);
+    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, logger);
 
     const handler = (): void => undefined;
     Reflect.defineMetadata(REQUIRE_PERMISSION_KEY, 'destination.read', handler);
@@ -45,12 +49,10 @@ describe('AuthorizationGuard denial logging', () => {
       },
     };
 
-    let caught: unknown;
-    try {
-      guard.canActivate(contextFor(handler, request));
-    } catch (error) {
-      caught = error;
-    }
+    const caught: unknown = await guard.canActivate(contextFor(handler, request)).then(
+      () => null,
+      (error: unknown) => error,
+    );
 
     expect(caught).toBeInstanceOf(DomainError);
     expect((caught as DomainError).statusCode).toBe(403);
@@ -66,10 +68,10 @@ describe('AuthorizationGuard denial logging', () => {
     expect(logged).not.toContain('DRIVER');
   });
 
-  it('uses the marker-count reason code for an unmarked route', () => {
+  it('uses the marker-count reason code for an unmarked route', async () => {
     const warn = vi.fn();
     const logger = { setContext: vi.fn(), warn } as unknown as PinoLogger;
-    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, logger);
+    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, logger);
     const handler = (): void => undefined;
     const request: Record<string, unknown> = {
       id: 'req-8',
@@ -83,14 +85,14 @@ describe('AuthorizationGuard denial logging', () => {
       },
     };
 
-    expect(() => guard.canActivate(contextFor(handler, request))).toThrow(DomainError);
+    await expect(guard.canActivate(contextFor(handler, request))).rejects.toThrow(DomainError);
     expect(warn).toHaveBeenCalledWith(
       { reqId: 'req-8', reasonCode: 'AUTHZ_MARKER_COUNT' },
       'authorization denied',
     );
   });
 
-  it('accepts the unprefixed public form only outside production', () => {
+  it('accepts the unprefixed public form only outside production', async () => {
     const handler = (): void => undefined;
     Reflect.defineMetadata(IS_PUBLIC_KEY, true, handler);
     const request: Record<string, unknown> = {
@@ -99,19 +101,94 @@ describe('AuthorizationGuard denial logging', () => {
       originalUrl: '/auth/login',
     };
 
-    const testGuard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, {
+    const testGuard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, {
       setContext: vi.fn(),
       warn: vi.fn(),
     } as unknown as PinoLogger);
-    expect(testGuard.canActivate(contextFor(handler, request))).toBe(true);
+    await expect(testGuard.canActivate(contextFor(handler, request))).resolves.toBe(true);
 
-    const productionGuard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'production' }, {
-      setContext: vi.fn(),
-      warn: vi.fn(),
-    } as unknown as PinoLogger);
-    expect(() => productionGuard.canActivate(contextFor(handler, request))).toThrow(DomainError);
+    const productionGuard = new AuthorizationGuard(
+      new Reflector(),
+      { nodeEnv: 'production' },
+      freshness,
+      {
+        setContext: vi.fn(),
+        warn: vi.fn(),
+      } as unknown as PinoLogger,
+    );
+    await expect(productionGuard.canActivate(contextFor(handler, request))).rejects.toThrow(
+      DomainError,
+    );
 
     request.originalUrl = '/api/v1/auth/login';
-    expect(productionGuard.canActivate(contextFor(handler, request))).toBe(true);
+    await expect(productionGuard.canActivate(contextFor(handler, request))).resolves.toBe(true);
+  });
+});
+
+describe('AuthorizationGuard sensitive freshness', () => {
+  const request: Record<string, unknown> = {
+    id: 'req-sensitive',
+    method: 'POST',
+    originalUrl: '/api/v1/authz-freshness/probe',
+    auth: {
+      sub: '00000000-0000-4000-8000-000000000001',
+      tid: '00000000-0000-4000-8000-000000000002',
+      sid: '00000000-0000-4000-8000-000000000003',
+      roles: ['FACTORY_OPERATOR'],
+    },
+  };
+
+  function sensitiveGuard(): AuthorizationGuard {
+    return new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, {
+      setContext: vi.fn(),
+      warn: vi.fn(),
+    } as unknown as PinoLogger);
+  }
+
+  function contextForSensitive(): ExecutionContext {
+    const handler = (): void => undefined;
+    Reflect.defineMetadata(REQUIRE_PERMISSION_KEY, 'carrier_membership.write', handler);
+    return contextFor(handler, request);
+  }
+
+  it('intersects token and DB roles and passes when both grant', async () => {
+    freshnessRead.mockResolvedValueOnce({
+      userActive: true,
+      tenantActive: true,
+      sessionLive: true,
+      roles: ['FACTORY_OPERATOR'],
+    });
+    await expect(sensitiveGuard().canActivate(contextForSensitive())).resolves.toBe(true);
+    expect(freshnessRead).toHaveBeenCalledWith({
+      tenantId: '00000000-0000-4000-8000-000000000002',
+      userId: '00000000-0000-4000-8000-000000000001',
+      sessionId: '00000000-0000-4000-8000-000000000003',
+    });
+  });
+
+  it('denies a token role the DB no longer has', async () => {
+    freshnessRead.mockResolvedValueOnce({
+      userActive: true,
+      tenantActive: true,
+      sessionLive: true,
+      roles: [],
+    });
+    await expect(sensitiveGuard().canActivate(contextForSensitive())).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+  });
+
+  it('answers the generic 401 for a dead session or inactive account/tenant', async () => {
+    for (const state of [
+      { userActive: true, tenantActive: true, sessionLive: false, roles: ['FACTORY_OPERATOR'] },
+      { userActive: false, tenantActive: true, sessionLive: true, roles: ['FACTORY_OPERATOR'] },
+      { userActive: true, tenantActive: false, sessionLive: true, roles: ['FACTORY_OPERATOR'] },
+    ]) {
+      freshnessRead.mockResolvedValueOnce(state);
+      await expect(sensitiveGuard().canActivate(contextForSensitive())).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+        statusCode: 401,
+      });
+    }
   });
 });
