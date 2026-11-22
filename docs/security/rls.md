@@ -66,6 +66,14 @@ Global tables (no `tenant_id`, each with a written reason — ADR-006 U14):
 Tenant-owned (template above): `users`, `user_roles`, `user_credentials`,
 `auth_sessions`.
 
+Planned tenant-owned tables (F1-06, `docs/plan/F1-06.md`; active only from their
+migrations): `audit_logs` (append-only — `SELECT, INSERT` only, triggers block
+UPDATE/DELETE/TRUNCATE for every role, ADR-009 L3), `idempotency_keys`
+(DELETE only for expired rows via a RESTRICTIVE policy, ADR-010 L11) and
+`integration_outbox` (no DELETE/TRUNCATE for the runtime role, ADR-010 L13). The
+U14 guard covers them automatically because each carries `tenant_id` + the
+template; the definer catalog stays at 6.
+
 Special write rules:
 
 - `users` is **soft-delete only** (ADR-006 U13): DELETE is revoked from
