@@ -6,6 +6,11 @@ import helmet from 'helmet';
 import { inject } from 'vitest';
 
 import { AppModule } from '../../src/app.module.js';
+import {
+  PASSWORD_METHOD_CLOCK,
+  type PasswordMethodClock,
+} from '../../src/modules/auth/password-method.js';
+import { RATE_LIMITER, type RateLimiter } from '../../src/modules/auth/rate-limiter.js';
 
 /**
  * Boots the real AppModule against the shared integration container, with the
@@ -16,15 +21,23 @@ import { AppModule } from '../../src/app.module.js';
 export async function buildAuthApp(
   env: Record<string, string> = {},
   extraModules: readonly Type[] = [],
+  options: { passwordMethodClock?: PasswordMethodClock; rateLimiter?: RateLimiter } = {},
 ): Promise<NestExpressApplication> {
   Object.assign(process.env, {
     DATABASE_URL: inject('appUrl'),
     NODE_ENV: 'test',
     ...env,
   });
-  const moduleRef = await Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [AppModule, ...extraModules],
-  }).compile();
+  });
+  if (options.passwordMethodClock !== undefined) {
+    builder.overrideProvider(PASSWORD_METHOD_CLOCK).useValue(options.passwordMethodClock);
+  }
+  if (options.rateLimiter !== undefined) {
+    builder.overrideProvider(RATE_LIMITER).useValue(options.rateLimiter);
+  }
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   app.use(helmet());
   app.setGlobalPrefix(API_PREFIX, {

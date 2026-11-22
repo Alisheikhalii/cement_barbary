@@ -3,7 +3,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import type { Request } from 'express';
 import request from 'supertest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * Express `trust proxy` is OFF unless the deployment turns it on. Rate limits
@@ -32,20 +32,29 @@ async function buildProbe(trustProxy?: number): Promise<NestExpressApplication> 
 }
 
 describe('trust proxy', () => {
-  let app: NestExpressApplication | undefined;
+  let plain: NestExpressApplication;
+  let trusted: NestExpressApplication;
 
-  afterEach(async () => {
-    if (app !== undefined) {
-      await app.close();
-      app = undefined;
-    }
+  // Build once and warm both servers before the assertions. The old per-test
+  // boot raced the first Nest/Express module load under CPU contention and
+  // timed out; booting in beforeAll removes that cold-start variance without
+  // touching any assertion.
+  beforeAll(async () => {
+    plain = await buildProbe();
+    trusted = await buildProbe(1);
+    await request(plain.getHttpServer()).get('/probe');
+    await request(trusted.getHttpServer()).get('/probe');
+  }, 60_000);
+
+  afterAll(async () => {
+    await plain?.close();
+    await trusted?.close();
   });
 
   it('ignores X-Forwarded-For by default', async () => {
-    app = await buildProbe();
-    expect(app.getHttpAdapter().getInstance().get('trust proxy')).toBeFalsy();
+    expect(plain.getHttpAdapter().getInstance().get('trust proxy')).toBeFalsy();
 
-    const response = await request(app.getHttpServer())
+    const response = await request(plain.getHttpServer())
       .get('/probe')
       .set('X-Forwarded-For', '203.0.113.7');
 
@@ -56,9 +65,7 @@ describe('trust proxy', () => {
   });
 
   it('uses X-Forwarded-For only when trust proxy is enabled (F8 hand-off)', async () => {
-    app = await buildProbe(1);
-
-    const response = await request(app.getHttpServer())
+    const response = await request(trusted.getHttpServer())
       .get('/probe')
       .set('X-Forwarded-For', '203.0.113.7');
 

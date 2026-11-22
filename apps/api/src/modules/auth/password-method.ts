@@ -33,6 +33,17 @@ import { USERNAME_PATTERN, type AssignableRole } from '../users/users.types.js';
 /** Same shape as the tenants_code_format CHECK. */
 const TENANT_CODE_PATTERN = /^[a-z0-9-]{2,32}$/;
 
+/**
+ * Injectable wall clock for the delay/expiry checks. Production uses
+ * Date.now; the timing proof overrides it to skip the progressive-delay branch
+ * deterministically instead of relying on counter resets and timing luck.
+ */
+export const PASSWORD_METHOD_CLOCK = Symbol('PASSWORD_METHOD_CLOCK');
+
+export interface PasswordMethodClock {
+  now(): number;
+}
+
 @Injectable()
 export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
   readonly method = 'password';
@@ -46,6 +57,7 @@ export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
     @Inject(TenantContext) private readonly tenantContext: TenantContext,
     @Inject(PiiService) private readonly pii: PiiService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(PASSWORD_METHOD_CLOCK) private readonly clock: PasswordMethodClock,
   ) {}
 
   async verify(input: PasswordLoginInput): Promise<CredentialVerifyResult> {
@@ -143,7 +155,7 @@ export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
    * (A2); a correct password on a disabled account is still a failure.
    */
   private async evaluate(row: AuthLookupRow, password: string): Promise<CredentialVerifyResult> {
-    const now = Date.now();
+    const now = this.clock.now();
     if (
       row.temporaryPasswordExpiresAt !== null &&
       row.temporaryPasswordExpiresAt.getTime() <= now

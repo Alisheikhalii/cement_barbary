@@ -151,7 +151,9 @@ internal reason with the request id; they never carry PII or tokens.
 - Refresh reads status and roles **inside the rotation transaction**, so a new token is one
   consistent snapshot.
 - `UsersRepository.assignRole` / `revokeRole` revoke **all** sessions of that user in the same
-  transaction. A role change forces re-login, so an old token cannot carry the old role forward.
+  transaction. Sensitive permissions re-read the DB roles immediately; normal permissions keep the
+  token roles until the 10-minute TTL or refresh (the accepted Z6 hybrid), so an old token can carry
+  an old role on non-sensitive routes for at most one token lifetime.
 - SR-05 (migration `0010`): `bitabar_app` has **no direct DML** on `user_roles`. Both methods call
   the SECURITY DEFINER functions `app.assign_user_role` / `app.revoke_user_role`; the database
   derives tenant/scope, validates the role, locks the live user and revokes sessions atomically.

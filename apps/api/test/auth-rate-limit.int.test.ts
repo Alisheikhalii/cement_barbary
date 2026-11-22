@@ -134,6 +134,9 @@ describe('login rate limits (A11)', () => {
     expect(knownBlocked.status).toBe(429);
     expect(unknownBlocked.status).toBe(429);
     expect(unknownBlocked.body).toEqual(knownBlocked.body);
+    // The wait time is header-only, so the bodies stay byte-identical even when
+    // the two requests land in different seconds of the same window.
+    expect(knownBlocked.body).not.toHaveProperty('error.details');
     expect(typeof unknownBlocked.headers['retry-after']).toBe(
       typeof knownBlocked.headers['retry-after'],
     );
@@ -169,6 +172,8 @@ describe('login rate limits (A11)', () => {
     }
     const hit = await store.hit(key, 60);
     expect(hit.count).toBe(1);
+    expect(hit.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(hit.retryAfterSeconds).toBeLessThanOrEqual(60);
   });
 
   it('the sweep removes expired buckets', async () => {
@@ -186,6 +191,11 @@ describe('login rate limits (A11)', () => {
     expect(left.rowCount).toBe(0);
   });
 
+  // T08 investigation: the one-off SQLSTATE 57014 was observed only while
+  // lint/typecheck/build competed for CPU. The 50 upserts serialize on one row
+  // and queue on the 10-connection pool; the production 5 s statement_timeout
+  // then cancelled the last waiter. The int config now uses maxWorkers: 1 and
+  // the stability proof runs with nothing else; no timeout or assertion moved.
   it('the atomic upsert never undercounts under 50 parallel hits', async () => {
     const store = appIp.get(RateLimitStore);
     const key = `login:acct:${'x'.repeat(43)}`;

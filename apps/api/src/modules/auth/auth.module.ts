@@ -8,7 +8,7 @@ import { AuthRepository } from './auth.repository.js';
 import { AuthService } from './auth.service.js';
 import { CsrfGuard } from './csrf.guard.js';
 import { DbRateLimiter } from './db-rate-limiter.js';
-import { PasswordMethod } from './password-method.js';
+import { PASSWORD_METHOD_CLOCK, PasswordMethod } from './password-method.js';
 import { PasswordService } from './password.service.js';
 import { RATE_LIMITER } from './rate-limiter.js';
 import { SessionRepository } from './session.repository.js';
@@ -33,6 +33,7 @@ import { TokenService } from './token.service.js';
     AuthRepository,
     TenantDirectory,
     PasswordMethod,
+    { provide: PASSWORD_METHOD_CLOCK, useValue: { now: () => Date.now() } },
     AuthService,
     CsrfGuard,
     { provide: RATE_LIMITER, useClass: DbRateLimiter },

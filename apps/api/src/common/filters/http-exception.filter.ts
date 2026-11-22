@@ -98,7 +98,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             message: exception.message,
             // Client errors (4xx) may carry details (e.g. validation issues);
             // server errors (5xx) never expose details — they are log-only.
-            ...(exception.statusCode < HttpStatus.INTERNAL_SERVER_ERROR && exception.details
+            // 429 is the exception: its only detail is the wait time, which is
+            // already in Retry-After. Keeping it out of the body makes two
+            // blocked responses byte-identical (no account oracle) and removes
+            // a time-varying field from the security-sensitive comparison.
+            ...(exception.statusCode < HttpStatus.INTERNAL_SERVER_ERROR &&
+            exception.statusCode !== HttpStatus.TOO_MANY_REQUESTS &&
+            exception.details
               ? { details: exception.details }
               : {}),
           },

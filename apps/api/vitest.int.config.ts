@@ -12,5 +12,8 @@ export default defineConfig({
     testTimeout: 30000,
     hookTimeout: 120000,
     fileParallelism: false,
+    // Explicit serial worker: no second test file can compete for CPU with the
+    // timing proof or the 50-way rate-limit check.
+    maxWorkers: 1,
   },
 });

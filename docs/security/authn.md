@@ -86,7 +86,10 @@ upsert, lazy + hourly TTL cleanup). A Redis implementation can replace it withou
 **Key hygiene:** the IP bucket key holds the client IP (a counter dimension, not an account);
 account and tenant-code keys are HMAC-SHA256 of the identifier (domain-separated `PII_HMAC_KEY`), so
 the persisted row never contains a raw phone, username or tenant code. Unknown identifiers consume
-exactly the same buckets as known ones, so a 429 cannot reveal existence.
+exactly the same buckets as known ones, so a 429 cannot reveal existence. The wait time is computed
+by PostgreSQL in the same upsert statement as the counter (no Node/DB clock subtraction), and it is
+returned **only** in the `Retry-After` header: the 429 body carries no `details`, so two blocked
+responses are byte-identical even when they land in different seconds of the same window.
 
 **Deployment constraint (F8).** Express `trust proxy` stays **off** by default — a client-sent
 `X-Forwarded-For` never changes `request.ip` (unit test `trust-proxy.test.ts`). In production,

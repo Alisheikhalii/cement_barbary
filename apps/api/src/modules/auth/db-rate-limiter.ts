@@ -23,8 +23,9 @@ export class DbRateLimiter implements RateLimiter, OnModuleInit, OnModuleDestroy
     if (hit.count <= limit) {
       return { allowed: true };
     }
-    const remainingMs = hit.expiresAt.getTime() - Date.now();
-    return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(remainingMs / 1000)) };
+    // Computed by PostgreSQL in the same statement as the counter update, so a
+    // Node/DB clock skew can never change the verdict or cross a second boundary.
+    return { allowed: false, retryAfterSeconds: hit.retryAfterSeconds };
   }
 
   onModuleInit(): void {
