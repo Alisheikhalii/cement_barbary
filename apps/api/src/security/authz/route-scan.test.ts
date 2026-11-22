@@ -35,6 +35,8 @@ function route(overrides: Partial<ScannedRoute> = {}): ScannedRoute {
     classLevelMarker: false,
     permission: TENANT_PERMISSION,
     bodySchema: null,
+    querySchema: null,
+    paramsSchema: null,
     ...overrides,
   };
 }
@@ -173,7 +175,7 @@ describe('route scan — permissions and sensitive bodies (SA-05)', () => {
   it('accepts a sensitive schema that carries non-reason fields', () => {
     const schema = z.strictObject({
       reason: sensitiveReasonSchema,
-      carrierId: z.uuid(),
+      note: z.string().max(200),
     });
     expect(
       scanRoutes([route({ permission: SENSITIVE_PERMISSION, bodySchema: schema })], 'test'),
@@ -224,6 +226,47 @@ describe('route scan — permissions and sensitive bodies (SA-05)', () => {
         ),
     });
     expect(reasonSchemaIsValid(c0Only)).toBe(false);
+  });
+});
+
+describe('route scan — mass assignment (T07)', () => {
+  it('rejects forbidden identity keys in body, query and params schemas', () => {
+    expect(
+      codes([route({ bodySchema: z.strictObject({ roles: z.array(z.string()) }) })]),
+    ).toContain('AUTHZ_MASS_ASSIGNMENT');
+    expect(codes([route({ querySchema: z.strictObject({ tenant_id: z.string() }) })])).toContain(
+      'AUTHZ_MASS_ASSIGNMENT',
+    );
+    expect(codes([route({ paramsSchema: z.strictObject({ userId: z.string() }) })])).toContain(
+      'AUTHZ_MASS_ASSIGNMENT',
+    );
+  });
+
+  it('rejects a non-strict object in any input surface', () => {
+    expect(codes([route({ bodySchema: z.object({ name: z.string() }) })])).toContain(
+      'AUTHZ_NON_STRICT_INPUT',
+    );
+    expect(codes([route({ querySchema: z.object({ page: z.string() }) })])).toContain(
+      'AUTHZ_NON_STRICT_INPUT',
+    );
+    expect(codes([route({ paramsSchema: z.object({ id: z.string() }) })])).toContain(
+      'AUTHZ_NON_STRICT_INPUT',
+    );
+  });
+
+  it('accepts strict body, query and params schemas', () => {
+    expect(
+      scanRoutes(
+        [
+          route({
+            bodySchema: z.strictObject({ displayName: z.string() }),
+            querySchema: z.strictObject({ page: z.coerce.number().int().min(1) }),
+            paramsSchema: z.strictObject({ id: z.uuid() }),
+          }),
+        ],
+        'test',
+      ),
+    ).toEqual([]);
   });
 });
 

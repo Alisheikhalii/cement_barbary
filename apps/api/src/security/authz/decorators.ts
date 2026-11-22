@@ -1,4 +1,4 @@
-import { Body, SetMetadata } from '@nestjs/common';
+import { Body, Param, Query, SetMetadata } from '@nestjs/common';
 import type { z } from 'zod';
 
 import { IS_PUBLIC_KEY, Public } from '../../common/auth/public.decorator.js';
@@ -24,6 +24,10 @@ export const REQUIRE_PERMISSION_KEY = 'authz:require-permission';
 /** The body schema recorded on the handler for the route scan (SA-05). */
 export const BODY_SCHEMA_KEY = 'authz:body-schema';
 
+/** Query/params schemas recorded for the mass-assignment scan (T07). */
+export const QUERY_SCHEMA_KEY = 'authz:query-schema';
+export const PARAMS_SCHEMA_KEY = 'authz:params-schema';
+
 /** Any authenticated principal, acting only on its own identity (e.g. /auth/me). */
 export const SelfService = (): MethodDecorator => SetMetadata(IS_SELF_SERVICE_KEY, true);
 
@@ -38,14 +42,43 @@ export const RequirePermission = (permission: PermissionName): MethodDecorator =
  */
 export function ZodBody<T extends z.ZodType>(schema: T): ParameterDecorator {
   return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number) => {
-    if (propertyKey !== undefined) {
-      const handler = (target as Record<PropertyKey, unknown>)[propertyKey];
-      if (typeof handler === 'function') {
-        Reflect.defineMetadata(BODY_SCHEMA_KEY, schema, handler);
-      }
-    }
+    recordSchema(BODY_SCHEMA_KEY, schema, target, propertyKey);
     Body(new ZodValidationPipe(schema))(target, propertyKey, parameterIndex);
   };
+}
+
+/**
+ * Query/params counterparts of `@ZodBody` (T07 mass-assignment scan). The
+ * recorded schema is walked at boot; a forbidden identity/status key or a
+ * non-strict nested object fails startup.
+ */
+export function ZodQuery<T extends z.ZodType>(schema: T): ParameterDecorator {
+  return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+    recordSchema(QUERY_SCHEMA_KEY, schema, target, propertyKey);
+    Query(new ZodValidationPipe(schema))(target, propertyKey, parameterIndex);
+  };
+}
+
+export function ZodParams<T extends z.ZodType>(schema: T): ParameterDecorator {
+  return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+    recordSchema(PARAMS_SCHEMA_KEY, schema, target, propertyKey);
+    Param(new ZodValidationPipe(schema))(target, propertyKey, parameterIndex);
+  };
+}
+
+function recordSchema(
+  key: string,
+  schema: z.ZodType,
+  target: object,
+  propertyKey: string | symbol | undefined,
+): void {
+  if (propertyKey === undefined) {
+    return;
+  }
+  const handler = (target as Record<PropertyKey, unknown>)[propertyKey];
+  if (typeof handler === 'function') {
+    Reflect.defineMetadata(key, schema, handler);
+  }
 }
 
 /** True when the class itself carries any access marker (always invalid). */

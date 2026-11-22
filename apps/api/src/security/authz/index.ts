@@ -18,6 +18,30 @@ export {
 } from './role-permissions.js';
 export type { RoleCode, RolePermissionMap } from './role-permissions.js';
 
+export {
+  BODY_SCHEMA_KEY,
+  PARAMS_SCHEMA_KEY,
+  Public,
+  QUERY_SCHEMA_KEY,
+  RequirePermission,
+  SelfService,
+  ZodBody,
+  ZodParams,
+  ZodQuery,
+} from './decorators.js';
+
+export { FORBIDDEN_INPUT_KEYS, scanInputSchema } from './input-scan.js';
+export type { InputScanCode, InputScanIssue, InputSurface } from './input-scan.js';
+
+export {
+  extractMatrixBlock,
+  MATRIX_BEGIN,
+  MATRIX_END,
+  renderMatrix,
+  replaceMatrixBlock,
+} from './matrix.js';
+export type { MatrixRoute } from './matrix.js';
+
 export { createPrincipal } from './principal.js';
 export type { Principal, PrincipalInput } from './principal.js';
 

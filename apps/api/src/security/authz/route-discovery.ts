@@ -7,6 +7,8 @@ import {
   hasClassLevelAccessMarker,
   IS_PUBLIC_KEY,
   IS_SELF_SERVICE_KEY,
+  PARAMS_SCHEMA_KEY,
+  QUERY_SCHEMA_KEY,
   REQUIRE_PERMISSION_KEY,
 } from './decorators.js';
 import {
@@ -32,6 +34,90 @@ const REQUEST_METHOD_NAMES = [
   'SEARCH',
 ] as const;
 
+/** One controller the pure route collector can inspect. */
+export interface ControllerRouteSource {
+  readonly metatype: object & { readonly name: string; readonly prototype?: object };
+  readonly instance: unknown;
+  readonly moduleName: string;
+}
+
+/**
+ * Pure collector shared by the Nest-aware discovery class, the boot check and
+ * the `authz:matrix` script. It reads decorator metadata only and never
+ * instantiates a provider.
+ */
+export function collectRoutesFromSources(
+  sources: readonly ControllerRouteSource[],
+  metadataScanner: Pick<MetadataScanner, 'getAllMethodNames'>,
+): readonly ScannedRoute[] {
+  const routes: ScannedRoute[] = [];
+  for (const source of sources) {
+    const { metatype, instance, moduleName } = source;
+    const controllerPaths = normalizeRoutePaths(Reflect.getMetadata(PATH_METADATA, metatype));
+    const classLevelMarker = hasClassLevelAccessMarker(metatype);
+    const controllerName = metatype.name;
+    // Request-scoped controllers have no pre-built instance; their route
+    // metadata still lives on the class prototype, so scan it instead of
+    // letting the controller become invisible (reviewer finding 4).
+    const instanceObject =
+      instance !== null && instance !== undefined && typeof instance === 'object' ? instance : null;
+    const prototype = instanceObject
+      ? (Object.getPrototypeOf(instanceObject) as object | null)
+      : ((metatype as { prototype?: object }).prototype ?? null);
+    if (prototype === null) {
+      continue;
+    }
+    const methodSource = (instanceObject ?? prototype) as Record<string, unknown>;
+    for (const methodName of metadataScanner.getAllMethodNames(prototype)) {
+      const handler: unknown = methodSource[methodName];
+      if (typeof handler !== 'function') {
+        continue;
+      }
+      const requestMethod: unknown = Reflect.getMetadata(METHOD_METADATA, handler);
+      if (typeof requestMethod !== 'number') {
+        // Not a route handler (a helper method on the controller).
+        continue;
+      }
+      const handlerPaths = normalizeRoutePaths(Reflect.getMetadata(PATH_METADATA, handler));
+      const isPublic = Reflect.getMetadata(IS_PUBLIC_KEY, handler) === true;
+      const isSelfService = Reflect.getMetadata(IS_SELF_SERVICE_KEY, handler) === true;
+      const permissionMetadata: unknown = Reflect.getMetadata(REQUIRE_PERMISSION_KEY, handler);
+      const isPermission = permissionMetadata !== undefined;
+      const bodySchema: unknown = Reflect.getMetadata(BODY_SCHEMA_KEY, handler);
+      const querySchema: unknown = Reflect.getMetadata(QUERY_SCHEMA_KEY, handler);
+      const paramsSchema: unknown = Reflect.getMetadata(PARAMS_SCHEMA_KEY, handler);
+      for (const controllerPath of controllerPaths) {
+        for (const handlerPath of handlerPaths) {
+          routes.push({
+            moduleName,
+            controllerName,
+            handlerName: methodName,
+            method: methodNameOf(requestMethod),
+            path: canonicalRoutePath(
+              controllerPath,
+              handlerPath,
+              UNPREFIXED_CONTROLLER_PATHS.has(controllerPath),
+            ),
+            isPublic,
+            isSelfService,
+            isPermission,
+            classLevelMarker,
+            permission: typeof permissionMetadata === 'string' ? permissionMetadata : null,
+            bodySchema: bodySchema ?? null,
+            querySchema: querySchema ?? null,
+            paramsSchema: paramsSchema ?? null,
+          });
+        }
+      }
+    }
+  }
+  return routes;
+}
+
+function methodNameOf(value: number): string {
+  return REQUEST_METHOD_NAMES[value] ?? `METHOD_${value}`;
+}
+
 /**
  * Reads the real Nest controller/route metadata once (ADR-008 Z3). Used by the
  * boot assertion and available to the route-scan test; it never mutates the
@@ -45,71 +131,18 @@ export class AuthzRouteDiscovery {
   ) {}
 
   collect(): readonly ScannedRoute[] {
-    const routes: ScannedRoute[] = [];
+    const sources: ControllerRouteSource[] = [];
     for (const wrapper of this.discovery.getControllers()) {
-      const instance: unknown = wrapper.instance;
-      const metatype: unknown = wrapper.metatype;
-      if (typeof metatype !== 'function') {
+      if (typeof wrapper.metatype !== 'function') {
         continue;
       }
-      const controllerPaths = normalizeRoutePaths(Reflect.getMetadata(PATH_METADATA, metatype));
-      const classLevelMarker = hasClassLevelAccessMarker(metatype);
-      const controllerName = metatype.name;
-      const moduleName = this.moduleNameOf(wrapper);
-      // Request-scoped controllers have no pre-built instance; their route
-      // metadata still lives on the class prototype, so scan it instead of
-      // letting the controller become invisible (reviewer finding 4).
-      const instanceObject =
-        instance !== null && instance !== undefined && typeof instance === 'object'
-          ? instance
-          : null;
-      const prototype = instanceObject
-        ? (Object.getPrototypeOf(instanceObject) as object | null)
-        : ((metatype as { prototype?: object }).prototype ?? null);
-      if (prototype === null) {
-        continue;
-      }
-      const methodSource = (instanceObject ?? prototype) as Record<string, unknown>;
-      for (const methodName of this.metadataScanner.getAllMethodNames(prototype)) {
-        const handler: unknown = methodSource[methodName];
-        if (typeof handler !== 'function') {
-          continue;
-        }
-        const requestMethod: unknown = Reflect.getMetadata(METHOD_METADATA, handler);
-        if (typeof requestMethod !== 'number') {
-          // Not a route handler (a helper method on the controller).
-          continue;
-        }
-        const handlerPaths = normalizeRoutePaths(Reflect.getMetadata(PATH_METADATA, handler));
-        const isPublic = Reflect.getMetadata(IS_PUBLIC_KEY, handler) === true;
-        const isSelfService = Reflect.getMetadata(IS_SELF_SERVICE_KEY, handler) === true;
-        const permissionMetadata: unknown = Reflect.getMetadata(REQUIRE_PERMISSION_KEY, handler);
-        const isPermission = permissionMetadata !== undefined;
-        const bodySchema: unknown = Reflect.getMetadata(BODY_SCHEMA_KEY, handler);
-        for (const controllerPath of controllerPaths) {
-          for (const handlerPath of handlerPaths) {
-            routes.push({
-              moduleName,
-              controllerName,
-              handlerName: methodName,
-              method: this.methodName(requestMethod),
-              path: canonicalRoutePath(
-                controllerPath,
-                handlerPath,
-                UNPREFIXED_CONTROLLER_PATHS.has(controllerPath),
-              ),
-              isPublic,
-              isSelfService,
-              isPermission,
-              classLevelMarker,
-              permission: typeof permissionMetadata === 'string' ? permissionMetadata : null,
-              bodySchema: bodySchema ?? null,
-            });
-          }
-        }
-      }
+      sources.push({
+        instance: wrapper.instance,
+        metatype: wrapper.metatype,
+        moduleName: this.moduleNameOf(wrapper),
+      });
     }
-    return routes;
+    return collectRoutesFromSources(sources, this.metadataScanner);
   }
 
   /** Every controller, including one with no route handlers (RD-03). */
@@ -132,9 +165,5 @@ export class AuthzRouteDiscovery {
     const host = (wrapper as { host?: { metatype?: { name?: unknown } } | null }).host;
     const name = host?.metatype?.name;
     return typeof name === 'string' && name.length > 0 ? name : 'UnknownModule';
-  }
-
-  private methodName(value: number): string {
-    return REQUEST_METHOD_NAMES[value] ?? `METHOD_${value}`;
   }
 }

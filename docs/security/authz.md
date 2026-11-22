@@ -21,9 +21,15 @@ test and at runtime.
    context for repositories.
 4. For a **sensitive** permission, the guard re-reads the user's status, tenant status and roles,
    intersects them with the token roles, and only then calls `can()`.
-5. Pipes (Zod, `.strict()`) validate the body; the handler runs. Sensitive routes have a validated
-   `reason` field in their schema and the `AuditHook` interceptor records the outcome (no-op until
-   F1-06). A guard denial is logged server-side with the request id and a stable reason code only.
+5. Pipes (Zod, `.strict()`) validate the body, query and params; the handler runs. Sensitive routes
+   have a validated `reason` field in their schema and the `AuditHook` interceptor records the
+   outcome (no-op until F1-06). A guard denial is logged server-side with the request id and a stable
+   reason code only.
+6. The boot scan walks every recorded input schema (`@ZodBody`, `@ZodQuery`, `@ZodParams`). Every
+   object level must be strict, and the identity/status keys `role`, `roles`, `tenantId`,
+   `tenant_id`, `carrierId`, `carrier_id`, `status`, `userId`, `user_id`, `createdBy` and
+   `created_by` are rejected wherever they appear — including nested objects, arrays, records and
+   union branches. A violation refuses startup.
 
 Guards run **before** pipes. That is why the sensitive `reason` requirement is enforced by the
 route-scan test against the route's body schema, not by the guard.
@@ -100,8 +106,11 @@ cannot grant access.
    `@RequirePermission(PERMISSIONS.x)` for data routes; never check `principal.roles` in a
    controller.
 2. Define a `.strict()` Zod body schema at every nested object level, plus strict query/params
-   schemas. Identity, tenant, carrier and status always come from the principal or the scope — never
-   from the request.
+   schemas recorded with `@ZodBody`, `@ZodQuery` and `@ZodParams`. Identity, tenant, carrier and
+   status always come from the principal or the scope — never from the request. The mass-assignment
+   scan rejects the listed keys in any of the three surfaces, including nested shapes. It sees only
+   schemas recorded by these decorators: a raw `@Body()`/`@Query()` or hand-written validation is a
+   review defect, not invisible input.
 3. If the permission is sensitive, include `reason: sensitiveReasonSchema` (import it from
    `apps/api/src/security/authz/sensitive-reason.ts`) in the schema; the `AuditHook` records it
    (no-op in F1-05). The shared schema trims, enforces 10–500, and rejects C0/C1 controls,

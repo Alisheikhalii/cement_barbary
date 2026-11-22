@@ -16,6 +16,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:prod": "node dist/db/migrate.js",
     "db:seed:dev": "tsx src/db/seed/dev-seed.ts",
+    "authz:matrix": "tsx test/authz/generate-matrix.ts",
     "cli:create-user": "tsx src/cli/create-user.ts",
     "cli:reset-password": "tsx src/cli/reset-password.ts"
   },

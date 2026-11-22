@@ -1,5 +1,6 @@
 import { API_PREFIX } from '@bitabar/shared';
 
+import { scanInputSchema } from './input-scan.js';
 import { isPermissionName, isSensitivePermission } from './permissions.js';
 import { FORBIDDEN_REASON_RANGES } from './sensitive-reason.js';
 
@@ -57,6 +58,10 @@ export interface ScannedRoute {
   readonly permission: string | null;
   /** Schema recorded by `@ZodBody` (SA-05), or null. */
   readonly bodySchema: unknown;
+  /** Schema recorded by `@ZodQuery` (T07 mass-assignment scan), or null. */
+  readonly querySchema: unknown;
+  /** Schema recorded by `@ZodParams` (T07 mass-assignment scan), or null. */
+  readonly paramsSchema: unknown;
 }
 
 /** A controller discovered by Nest, including one with no route handlers. */
@@ -288,8 +293,33 @@ export function scanRoutes(
         }
       }
     }
+    issues.push(...inputSchemaIssues(route, routeName));
     if (environment === 'production') {
       issues.push(...productionSurfaceIssues(route.controllerName, route.moduleName, routeName));
+    }
+  }
+  return issues;
+}
+
+/**
+ * T07 mass-assignment gate: every recorded body/query/params schema is walked.
+ * A forbidden identity/status key, a non-strict object or an arbitrary `any`/
+ * `unknown` schema is a startup failure.
+ */
+function inputSchemaIssues(route: ScannedRoute, routeName: string): readonly ScanIssue[] {
+  const surfaces = [
+    ['body', route.bodySchema],
+    ['query', route.querySchema],
+    ['params', route.paramsSchema],
+  ] as const;
+  const issues: ScanIssue[] = [];
+  for (const [surface, schema] of surfaces) {
+    for (const issue of scanInputSchema(schema, surface)) {
+      issues.push({
+        code: issue.code,
+        route: routeName,
+        detail: `${issue.path}: ${issue.detail}`,
+      });
     }
   }
   return issues;
