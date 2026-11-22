@@ -28,6 +28,16 @@ export const PUBLIC_ROUTE_ALLOWLIST = Object.freeze([
 ] as const);
 
 /**
+ * Self-service routes are allowed only on this reviewed list (F1-06 T03,
+ * closing F1-05 MEDIUM-2). `@SelfService` opens a route to every authenticated
+ * principal, so a new one must be a reviewed allowlist change — not an
+ * annotation someone adds to a new controller.
+ */
+export const SELF_SERVICE_ROUTE_ALLOWLIST = Object.freeze([
+  { method: 'GET', path: '/api/v1/auth/me' },
+] as const);
+
+/**
  * Controllers allowed in a production process (RD-03). A new production
  * controller deliberately updates this list in a reviewed change; a probe,
  * fixture or test controller can never slip into the production surface.
@@ -95,12 +105,28 @@ export function isAllowlistedPublicRoute(
   rawPath: string,
   environment: ScanEnvironment,
 ): boolean {
+  return isAllowlisted(method, rawPath, environment, PUBLIC_ROUTE_ALLOWLIST);
+}
+
+/** Same path rules as the public allowlist, for the reviewed self-service list (T03). */
+export function isAllowlistedSelfServiceRoute(
+  method: string,
+  rawPath: string,
+  environment: ScanEnvironment,
+): boolean {
+  return isAllowlisted(method, rawPath, environment, SELF_SERVICE_ROUTE_ALLOWLIST);
+}
+
+function isAllowlisted(
+  method: string,
+  rawPath: string,
+  environment: ScanEnvironment,
+  allowlist: readonly { readonly method: string; readonly path: string }[],
+): boolean {
   const path = normalizeRequestPath(rawPath);
   const normalizedMethod = method.toUpperCase();
   const matches = (candidate: string): boolean =>
-    PUBLIC_ROUTE_ALLOWLIST.some(
-      (entry) => entry.method === normalizedMethod && entry.path === candidate,
-    );
+    allowlist.some((entry) => entry.method === normalizedMethod && entry.path === candidate);
   if (matches(path)) {
     return true;
   }
@@ -267,6 +293,16 @@ export function scanRoutes(
         code: 'AUTHZ_PUBLIC_NOT_ALLOWLISTED',
         route: routeName,
         detail: 'public routes are limited to the reviewed §D allowlist',
+      });
+    }
+    if (
+      route.isSelfService &&
+      !isAllowlistedSelfServiceRoute(route.method, route.path, environment)
+    ) {
+      issues.push({
+        code: 'AUTHZ_SELF_SERVICE_NOT_ALLOWLISTED',
+        route: routeName,
+        detail: 'self-service routes are limited to the reviewed allowlist (GET /api/v1/auth/me)',
       });
     }
     if (route.isPermission) {

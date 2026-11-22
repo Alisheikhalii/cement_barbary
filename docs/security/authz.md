@@ -48,6 +48,10 @@ route-scan test against the route's body schema, not by the guard.
   check, so a controller annotation cannot silently open unmarked handlers.
 - `@Public()` is allowed only on the routes listed in the §D allowlist; a new public route requires
   a reviewed allowlist change. The scan treats any other public route as a failure.
+- `@SelfService()` is allowed only on `SELF_SERVICE_ROUTE_ALLOWLIST` — currently
+  `GET /api/v1/auth/me` (F1-06 T03, closing F1-05 MEDIUM-2). Any other self-service route fails the
+  route scan and startup (`AUTHZ_SELF_SERVICE_NOT_ALLOWLISTED`); a new one requires a reviewed
+  allowlist change with a test.
 - The route-scan test and the boot assertion are two independent checks over the same
   `DiscoveryService` data. A throwaway unlabeled controller is the negative control for both.
 

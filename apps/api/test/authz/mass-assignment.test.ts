@@ -19,7 +19,12 @@ import { z } from 'zod';
 import { AppModule } from '../../src/app.module.js';
 import { DbHealth } from '../../src/db/db-health.js';
 import { TokenService } from '../../src/modules/auth/token.service.js';
-import { SelfService, ZodBody, ZodParams, ZodQuery } from '../../src/security/authz/decorators.js';
+import {
+  RequirePermission,
+  ZodBody,
+  ZodParams,
+  ZodQuery,
+} from '../../src/security/authz/decorators.js';
 import {
   FORBIDDEN_INPUT_KEYS,
   scanInputSchema,
@@ -31,6 +36,9 @@ import {
   scanRoutes,
   type ScannedRoute,
 } from '../../src/security/authz/route-scan.js';
+
+/** Non-sensitive permission used only to keep probe routes marker-valid. */
+const TENANT_PERMISSION = 'destination.read';
 
 /**
  * Mass-assignment proof (ADR-008 Z3/Z8, F1-05 T07). Three independent layers:
@@ -76,10 +84,10 @@ function route(overrides: Partial<ScannedRoute> = {}): ScannedRoute {
     method: 'POST',
     path: '/api/v1/mass-assignment-probe',
     isPublic: false,
-    isSelfService: true,
-    isPermission: false,
+    isSelfService: false,
+    isPermission: true,
     classLevelMarker: false,
-    permission: null,
+    permission: TENANT_PERMISSION,
     bodySchema: null,
     querySchema: null,
     paramsSchema: null,
@@ -225,7 +233,7 @@ describe('mass-assignment scan — scanRoutes wiring', () => {
 
 @Controller('mass-assignment-body-probe')
 class MassAssignmentBodyProbeController {
-  @SelfService()
+  @RequirePermission('destination.read')
   @Post()
   handler(@ZodBody(z.strictObject({ roles: z.array(z.string()) })) body: { roles: string[] }): {
     ok: true;
@@ -237,7 +245,7 @@ class MassAssignmentBodyProbeController {
 
 @Controller('mass-assignment-query-probe')
 class MassAssignmentQueryProbeController {
-  @SelfService()
+  @RequirePermission('destination.read')
   @Get()
   handler(@ZodQuery(z.strictObject({ tenant_id: z.string() })) query: { tenant_id: string }): {
     ok: true;
@@ -249,7 +257,7 @@ class MassAssignmentQueryProbeController {
 
 @Controller('mass-assignment-params-probe')
 class MassAssignmentParamsProbeController {
-  @SelfService()
+  @RequirePermission('destination.read')
   @Get(':id')
   handler(@ZodParams(z.strictObject({ userId: z.string() })) params: { userId: string }): {
     ok: true;
@@ -261,7 +269,7 @@ class MassAssignmentParamsProbeController {
 
 @Controller('mass-assignment-nonstrict-probe')
 class MassAssignmentNonStrictProbeController {
-  @SelfService()
+  @RequirePermission('destination.read')
   @Get()
   handler(@ZodQuery(z.object({ page: z.string() })) query: { page: string }): { ok: true } {
     void query;
@@ -284,7 +292,7 @@ class MassAssignmentNonStrictProbeModule {}
 @Controller('mass-assignment-good-probe')
 class MassAssignmentGoodProbeController {
   @HttpCode(200)
-  @SelfService()
+  @RequirePermission('destination.read')
   @Post('echo')
   echo(
     @ZodBody(z.strictObject({ displayName: z.string().min(1) })) body: { displayName: string },
@@ -310,7 +318,7 @@ async function expectBootRejected(
   const issues = scanRoutes(app.get(AuthzRouteDiscovery).collect(), 'test');
   const found = issues.map((issue) => issue.code);
   expect(found).toContain(expectedCode);
-  // The @SelfService marker is valid, so the failure is the input scan alone.
+  // The permission marker is valid, so the failure is the input scan alone.
   expect(found).not.toContain('AUTHZ_MARKER_COUNT');
   await expect(app.init()).rejects.toThrow(expectedCode);
   await app.close().catch(() => undefined);
@@ -360,7 +368,7 @@ beforeAll(async () => {
     userId: USER_ID,
     tenantId: TENANT_ID,
     sessionId: SESSION_ID,
-    roles: ['DRIVER'],
+    roles: ['FACTORY_OPERATOR'],
   });
 }, 60000);
 

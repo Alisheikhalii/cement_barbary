@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   canonicalRoutePath,
   isAllowlistedPublicRoute,
+  isAllowlistedSelfServiceRoute,
   markerCount,
   normalizeRoutePath,
   normalizeRoutePaths,
@@ -11,6 +12,7 @@ import {
   reasonSchemaIsValid,
   scanControllers,
   scanRoutes,
+  SELF_SERVICE_ROUTE_ALLOWLIST,
   type ScannedRoute,
 } from './route-scan.js';
 import { sensitiveReasonSchema } from './sensitive-reason.js';
@@ -53,8 +55,14 @@ describe('route scan — markers', () => {
     expect(scanRoutes([route()], 'test')).toEqual([]);
   });
 
-  it('accepts a self-service route for every module', () => {
-    const self = route({ isPermission: false, isSelfService: true, permission: null });
+  it('accepts the allowlisted self-service route', () => {
+    const self = route({
+      method: 'GET',
+      path: '/api/v1/auth/me',
+      isPermission: false,
+      isSelfService: true,
+      permission: null,
+    });
     expect(scanRoutes([self], 'test')).toEqual([]);
   });
 
@@ -152,6 +160,60 @@ describe('route scan — public allowlist (GB-03)', () => {
         expect(isAllowlistedPublicRoute('POST', path, environment), path).toBe(false);
       }
     }
+  });
+});
+
+describe('route scan — self-service allowlist (F1-06 T03)', () => {
+  it('contains exactly the reviewed self-service routes', () => {
+    expect([...SELF_SERVICE_ROUTE_ALLOWLIST]).toEqual([{ method: 'GET', path: '/api/v1/auth/me' }]);
+  });
+
+  it('accepts each allowlisted self-service route in every environment', () => {
+    for (const entry of SELF_SERVICE_ROUTE_ALLOWLIST) {
+      const selfServiceRoute = route({
+        moduleName: 'AuthModule',
+        controllerName: 'AuthController',
+        method: entry.method,
+        path: entry.path,
+        isPermission: false,
+        isSelfService: true,
+        permission: null,
+      });
+      for (const environment of ['development', 'test', 'production'] as const) {
+        expect(scanRoutes([selfServiceRoute], environment), entry.path).toEqual([]);
+      }
+    }
+  });
+
+  it('rejects a self-service route that is not on the allowlist', () => {
+    const self = route({ isPermission: false, isSelfService: true, permission: null });
+    expect(codes([self])).toContain('AUTHZ_SELF_SERVICE_NOT_ALLOWLISTED');
+    expect(
+      codes(
+        [
+          route({
+            method: 'GET',
+            path: '/api/v1/auth/me/other',
+            isPermission: false,
+            isSelfService: true,
+            permission: null,
+          }),
+        ],
+        'production',
+      ),
+    ).toContain('AUTHZ_SELF_SERVICE_NOT_ALLOWLISTED');
+  });
+
+  it('matches self-service paths and methods with the public allowlist rules', () => {
+    expect(isAllowlistedSelfServiceRoute('GET', '/api/v1/auth/me', 'production')).toBe(true);
+    expect(isAllowlistedSelfServiceRoute('GET', '/api/v1/auth/me?x=1', 'production')).toBe(true);
+    expect(isAllowlistedSelfServiceRoute('GET', '/api/v1/auth/me/', 'production')).toBe(true);
+    expect(isAllowlistedSelfServiceRoute('get', '/api/v1/auth/me', 'test')).toBe(true);
+    expect(isAllowlistedSelfServiceRoute('GET', '/auth/me', 'test')).toBe(true);
+    expect(isAllowlistedSelfServiceRoute('GET', '/auth/me', 'production')).toBe(false);
+    expect(isAllowlistedSelfServiceRoute('POST', '/api/v1/auth/me', 'test')).toBe(false);
+    expect(isAllowlistedSelfServiceRoute('GET', '/api/v1/auth/me/../login', 'test')).toBe(false);
+    expect(isAllowlistedSelfServiceRoute('GET', '//api/v1/auth/me', 'test')).toBe(false);
   });
 });
 

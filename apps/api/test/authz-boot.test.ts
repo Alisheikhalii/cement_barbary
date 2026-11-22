@@ -67,6 +67,15 @@ class ExtraPublicController {
   }
 }
 
+@Controller('boot-extra-self-service')
+class ExtraSelfServiceController {
+  @SelfService()
+  @Get()
+  read(): { ok: true } {
+    return { ok: true };
+  }
+}
+
 @Controller('boot-sensitive')
 class BadSensitiveController {
   @RequirePermission(SENSITIVE_PERMISSION)
@@ -102,6 +111,9 @@ class ClassMarkedModule {}
 
 @Module({ controllers: [ExtraPublicController] })
 class ExtraPublicModule {}
+
+@Module({ controllers: [ExtraSelfServiceController] })
+class ExtraSelfServiceModule {}
 
 @Module({ controllers: [BadSensitiveController] })
 class BadSensitiveModule {}
@@ -217,6 +229,10 @@ describe('boot refusal — negative controls (C5/C6)', () => {
 
   it('refuses a public route outside the §D allowlist (GB-03)', async () => {
     await expectBootFailure([ExtraPublicModule], 'AUTHZ_PUBLIC_NOT_ALLOWLISTED');
+  });
+
+  it('refuses a self-service route outside the reviewed allowlist (F1-06 T03)', async () => {
+    await expectBootFailure([ExtraSelfServiceModule], 'AUTHZ_SELF_SERVICE_NOT_ALLOWLISTED');
   });
 
   it('refuses a sensitive route whose body does not validate reason (SA-05)', async () => {
