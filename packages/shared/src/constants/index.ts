@@ -10,3 +10,9 @@ export const MIN_WALLET_CHARGE_RIAL = 20_000;
 
 /** Max priorities a driver can pick in a timed reservation window (PRD BR-09). */
 export const DEFAULT_MAX_PRIORITIES = 3;
+
+/**
+ * Maximum length of the `reason` text on sensitive actions (ADR-008 Z10,
+ * ADR-009 L7, owner CP1 A6). Mirrors the `audit_logs.reason` DB CHECK.
+ */
+export const SENSITIVE_REASON_MAX_LENGTH = 500;

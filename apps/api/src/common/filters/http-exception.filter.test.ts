@@ -83,6 +83,35 @@ describe('GlobalExceptionFilter', () => {
     );
   });
 
+  it('never logs the raw 5xx message, SQL or parameter values (PII-safe projection)', () => {
+    const { filter, logger } = createFilter();
+    const { host, status } = createHost();
+    const phone = '09120000009';
+    const pgFailure = Object.assign(new Error(`Failed query: insert … (${phone})`), {
+      code: '23505',
+      detail: `Key (phone_hash)=(${phone}) already exists.`,
+      table: 'users',
+      constraint: 'users_tenant_phone_unique',
+      parameters: [phone],
+    });
+    filter.catch(pgFailure, host);
+    expect(status).toHaveBeenCalledWith(500);
+    const logged = logger.error.mock.calls[0]?.[0] as Record<string, unknown>;
+    const serialized = JSON.stringify(logged);
+    expect(serialized).not.toContain(phone);
+    expect(serialized).not.toContain('Failed query');
+    expect(logged).not.toHaveProperty('detail');
+    expect(logged).not.toHaveProperty('parameters');
+    expect(logged.err).toEqual(
+      expect.objectContaining({
+        name: 'Error',
+        sqlState: '23505',
+        table: 'users',
+        constraint: 'users_tenant_phone_unique',
+      }),
+    );
+  });
+
   it('keeps 4xx details in the body (client-facing validation issues)', () => {
     const { filter } = createFilter();
     const { host, json, status } = createHost();

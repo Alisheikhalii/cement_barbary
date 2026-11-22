@@ -10,6 +10,7 @@ import type { Request, Response } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 
 import { DomainError } from '../errors/domain-error.js';
+import { sanitizeErrorForLog } from '../logging/sanitize-error.js';
 
 interface ErrorBody {
   error: {
@@ -71,16 +72,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     }
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
-      // 5xx details (SQLSTATE codes only, no PII) are log-only, never sent to clients.
+      // 5xx details are log-only, never sent to clients. The exception is
+      // projected before logging (F1-06 T02): a raw PG/drizzle error carries
+      // SQL text and bound parameter values in `message`/`detail`/`parameters`,
+      // which key-based redaction cannot reach. Only structural fields survive.
       // errorCode is logged explicitly: the A14 redaction hides `code` keys
       // (future OTP codes) and would otherwise swallow DomainError.code here.
-      const details = exception instanceof DomainError ? exception.details : undefined;
+      const safe = sanitizeErrorForLog(exception);
       this.logger.error(
         {
-          err: exception,
+          err: safe,
           reqId: req.id,
           errorCode: body.error.code,
-          ...(details ? { details } : {}),
+          ...(safe.details ? { details: safe.details } : {}),
         },
         'Unhandled error',
       );

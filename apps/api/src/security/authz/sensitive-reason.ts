@@ -1,3 +1,4 @@
+import { SENSITIVE_REASON_MAX_LENGTH } from '@bitabar/shared';
 import { z } from 'zod';
 
 /**
@@ -41,7 +42,7 @@ export const sensitiveReasonSchema = z
   .string()
   .trim()
   .min(10)
-  .max(500)
+  .max(SENSITIVE_REASON_MAX_LENGTH)
   .refine((value) => !hasForbiddenReasonCharacter(value), {
     message: 'must not contain control, zero-width or bidi characters',
   });

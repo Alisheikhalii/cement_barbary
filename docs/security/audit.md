@@ -22,6 +22,11 @@ ADR-009 (audit), ADR-010 (idempotency/outbox); plan: `docs/plan/F1-06.md`; DB ru
 **Never audited as rows:** failed logins, delay hits, non-sensitive denials, replays of idempotent requests,
 health checks. Failed logins go to the structured security log only (see below).
 
+**`reason` is free text (owner CP1 A6).** It is capped at `SENSITIVE_REASON_MAX_LENGTH` (500, shared constant,
+Zod-validated) and stored as written. **The UI must warn operators not to enter personal data** (phone numbers,
+national IDs, third-party names) in a reason: it is not column-encrypted, and the warning is the only control
+against a human typing PII into it.
+
 ## Guarantees
 
 - **Success rows are atomic with the change.** `AuditWriter.append()` runs inside the caller's `TenantDb.run`
