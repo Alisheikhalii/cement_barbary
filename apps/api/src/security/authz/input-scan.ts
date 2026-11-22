@@ -12,8 +12,9 @@
  *     enough to fail the route scan and the production boot check.
  *
  * The walker understands the Zod wrappers the codebase uses, including arrays,
- * tuples, records, unions, intersections, lazy/recursive schemas and pipes. A
- * `pipe` is inspected on its INPUT side: that is the value the client sends.
+ * tuples, records/maps/sets, unions, intersections, lazy/recursive schemas and
+ * pipes. Both sides of a `pipe` are inspected: `transform` keeps the shape on
+ * the input side, while `z.preprocess` puts it on the output side.
  */
 
 /** The listed keys plus their snake_case forms; matching canonicalizes both. */

@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1** — **F1-04 کامل و منتشر شد (T01–T09؛ tag v0.1.4)**؛ **F1-05: T01–T07 انجام شد، منتظر بازبینی CP4/تایید مالک** | آخرین Tag: **v0.1.4** | آخرین Commit: **0cd63e1 – feat(authz): add sensitive audit hook and reason contract (F1-05 T06)**؛ T07 محلی (بدون Push؛ پیشنهاد SR-05 بدون Migration منتظر تایید C7)
+- فاز فعلی: **F1** — **F1-04 کامل و منتشر شد (T01–T09؛ tag v0.1.4)**؛ **F1-05: T01–T07 انجام شد، منتظر بازبینی CP4/تایید مالک** | آخرین Tag: **v0.1.4** | آخرین Commit: **8051f99 – feat(authz): add BFLA, mass-assignment and matrix sync (F1-05 T07)**؛ T07 محلی (بدون Push؛ پیشنهاد SR-05 بدون Migration منتظر تایید C7)
 - CI: **سبز** (run 44868692952 روی main @ d3c6dd8: Compose config، Lint/typecheck/test/build/audit، Secret scan؛ job «Commit messages» skipped) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۹/۰۱
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
 
