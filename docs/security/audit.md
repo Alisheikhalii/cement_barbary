@@ -33,8 +33,16 @@ against a human typing PII into it.
   transaction (nested `TenantDb.run` reuses it). If the change commits, the row exists; if the audit insert fails,
   the change does not commit.
 - **Failure and denial rows are best-effort.** They are written after the original transaction rolled back, in a
-  separate transaction. A DB/process failure in that window loses the row; the failure is logged with the request
-  id and the HTTP response is never changed. The security log still records the denial.
+  separate transaction, bounded by a 2 s timeout. A DB/process failure in that window loses the row; the failure is
+  logged with the request id and the HTTP response is never changed. The security log still records the denial.
+- **A failed best-effort write is never silent (owner CP1).** `PersistentAuditHook` logs
+  `{ reqId, outcome, code: 'AUDIT_WRITE_FAILED', err: sanitizeErrorForLog(error) }` — structural fields only, never
+  the payload, the reason text or the IP. There is no metrics hook in F1-06; when one is added it must increment
+  `audit.write_failed` at the same point.
+- **Final HTTP status.** Success rows store the status Nest will send: `@HttpCode` metadata first, otherwise the
+  POST default 201 / otherwise 200, and the handler's own status when it used `@Res()`. Failure rows store the
+  error's status (500 for an unknown error); denial rows store 403. This closes the F1-05 “outcome ≠ final status”
+  note.
 - **Append-only.** `bitabar_app` has `SELECT, INSERT` only; a row trigger blocks UPDATE/DELETE and a statement
   trigger blocks TRUNCATE for every role, including the migration owner. The migration fails closed if a REVOKE
   did not stick (`42501 AUDIT_REVOKE_INCOMPLETE`).
@@ -61,6 +69,9 @@ against a human typing PII into it.
 - `actor_type = 'system'`: CLI, seed, worker; `metadata.tool` names the tool. No user id.
 - IP: `ip_enc` (AES-256-GCM, AAD `tenant:audit_logs.ip_enc:<id>`) + `ip_hash` (keyed blind index, field
   `audit_logs.ip`). Both NULL or both set. **Never** store or log the raw IP; lookups use `ip_hash`.
+  Confirmed for T05: this is the same `PiiService` pattern as users — encryption AAD = tenant + column + row id
+  (the row id is generated before encrypting), blind index = HMAC over `tenant:field:normalized`; the integration
+  test decrypts with that exact AAD and fails if it differs.
 - `request_id` is the server-generated id (`genReqId: randomUUID`), trimmed; a client header is ignored.
 
 ## Failed logins and the security log
@@ -96,14 +107,25 @@ IDEMPOTENCY_KEY_REUSED`; concurrent duplicate → `409` + `Retry-After` after th
 
 `audit_logs` is not purged in F1-06 (owner C2). Owner-run retention in F8:
 `docs/runbooks/audit-retention.md`. The purge runs as the migration owner (needs trigger disable in a reviewed
-migration); the trigger blocks DELETE for every role including the owner. `idempotency_keys` expired rows are swept
+migration); the trigger blocks DELETE for every role including the owner.
+
+**Owner can still disable the trigger (owner CP2).** The triggers stop UPDATE/DELETE/TRUNCATE for every role, but
+they do not stop `ALTER TABLE audit_logs DISABLE TRIGGER` / `DROP TRIGGER` — those are table-owner operations. The
+migration `0012` fails closed if any trigger is missing or not `tgenabled = 'O'`, and an integration test asserts
+the same state, but nothing prevents a later owner session from turning one off. Therefore: production owner
+credentials are used **only** by the migration runner, are never handed to application or operator tooling, and
+trigger state is monitored (F8 runbook item; see AGENT.md §7). `bitabar_app` is not the owner and has
+`TRIGGER`/`REFERENCES` revoked, so it cannot change this.
+
+`idempotency_keys` expired rows are swept
 by the runtime job (DELETE allowed only for `expires_at < now()`); `integration_outbox` `sent` rows are kept until
 the F8 retention decision.
 
 ## Verification
 
-- `pnpm --filter @bitabar/api test:int --force` includes `test/audit-append-only.int.test.ts`,
-  `test/idempotency.int.test.ts`, `test/outbox.int.test.ts`, `test/user-role-oracle.int.test.ts`.
+- `pnpm --filter @bitabar/api test:int` includes `test/audit-append-only.int.test.ts`,
+  `test/audit-writer.int.test.ts`, `test/idempotency.int.test.ts`, `test/outbox.int.test.ts`,
+  `test/user-role-oracle.int.test.ts`.
 - Privilege matrix: `bitabar_app` on `audit_logs` → SELECT, INSERT only; `idempotency_keys` → no DELETE of live
   rows; `integration_outbox` → no DELETE/TRUNCATE.
 - Definer catalog test must still report exactly 6 functions.

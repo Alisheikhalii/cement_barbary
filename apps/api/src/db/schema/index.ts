@@ -9,3 +9,4 @@ export * from './user-roles.js';
 export * from './user-credentials.js';
 export * from './auth-sessions.js';
 export * from './auth-rate-limits.js';
+export * from './audit-logs.js';

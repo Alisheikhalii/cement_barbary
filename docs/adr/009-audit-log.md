@@ -37,7 +37,9 @@ atomicity applies to success rows, while failure/denial rows are best-effort.
   invisible until someone adds it to the allowlist — fail-closed). Phone and national ID are replaced by the
   existing `maskPhone()` / `maskNationalId()` output. `*_enc`, `*_hash`, password hashes, tokens, cookies and
   `Authorization` values are not allowlistable at all. Each jsonb column is capped by a DB `CHECK`
-  (`pg_column_size ≤ 16384`), so a runaway snapshot fails the transaction instead of bloating the table.
+  (`octet_length(col::text) ≤ 16384`, owner CP2): the text form of a jsonb value is its logical, uncompressed
+  payload, so a highly compressible snapshot cannot slip under a stored-size cap. Escape-heavy JSON counts
+  slightly larger than its raw bytes, which only makes the cap stricter.
 - **L3 — Append-only is enforced twice.**
   - Grants: `bitabar_app` has `SELECT, INSERT` on `audit_logs`; `UPDATE`, `DELETE` and `TRUNCATE` are explicitly
     **REVOKE**d (the default privileges from `0001_rls_foundation` would otherwise grant them).
@@ -80,8 +82,10 @@ atomicity applies to success rows, while failure/denial rows are best-effort.
   logged (request id, outcome, error class — no reason text) and the HTTP response is never changed by it. The
   security log still records the denial, so the loss is observability, not a silent authorization bypass.
 - **Not built:** retention purge. `audit_logs` grows forever in F1-06 (C2). The purge is an owner-run operation
-  with a retention period decided in F8 (`docs/runbooks/audit-retention.md`), executed as the migration owner
-  because the trigger blocks DELETE for every role. Recorded in AGENT.md §7.
+  with a retention period decided in F8 (`docs/runbooks/audit-retention.md`). Because the trigger blocks DELETE for
+  **every** role — the migration owner included — the F8 purge must arrive as a reviewed migration that disables
+  the trigger, deletes the expired range and re-enables it (and the post-condition must still find the triggers
+  enabled). Recorded in AGENT.md §7.
 - **Not built:** an audit read/report endpoint or UI. F1-06 only writes; reading is F6 reporting scope.
 
 **Owner answers:**

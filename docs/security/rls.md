@@ -64,15 +64,20 @@ Global tables (no `tenant_id`, each with a written reason — ADR-006 U14):
   account-dimension key (T07, recorded in the T05 report).
 
 Tenant-owned (template above): `users`, `user_roles`, `user_credentials`,
-`auth_sessions`.
+`auth_sessions`, `audit_logs`.
+
+`audit_logs` is **append-only** (ADR-009 L3, migrations `0011`/`0012`):
+`bitabar_app` has `SELECT, INSERT` only; `UPDATE/DELETE/TRUNCATE/TRIGGER/
+REFERENCES` are revoked, and BEFORE triggers reject UPDATE/DELETE/TRUNCATE for
+**every** role (including the migration owner) and force
+`occurred_at = clock_timestamp()` on INSERT. The migration fails closed if a
+privilege or trigger is missing.
 
 Planned tenant-owned tables (F1-06, `docs/plan/F1-06.md`; active only from their
-migrations): `audit_logs` (append-only — `SELECT, INSERT` only, triggers block
-UPDATE/DELETE/TRUNCATE for every role, ADR-009 L3), `idempotency_keys`
-(DELETE only for expired rows via a RESTRICTIVE policy, ADR-010 L11) and
-`integration_outbox` (no DELETE/TRUNCATE for the runtime role, ADR-010 L13). The
-U14 guard covers them automatically because each carries `tenant_id` + the
-template; the definer catalog stays at 6.
+migrations): `idempotency_keys` (DELETE only for expired rows via a RESTRICTIVE
+policy, ADR-010 L11) and `integration_outbox` (no DELETE/TRUNCATE for the
+runtime role, ADR-010 L13). The U14 guard covers them automatically because each
+carries `tenant_id` + the template; the definer catalog stays at 6.
 
 Special write rules:
 

@@ -15,14 +15,14 @@ describe('migrations (integration)', () => {
     const journal = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(journal.rows[0]?.n).toBe(11);
+    expect(journal.rows[0]?.n).toBe(13);
 
     // Second run: no error, no new journal rows.
     await expect(runMigrations(inject('ownerUrl'))).resolves.toBeUndefined();
     const again = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(again.rows[0]?.n).toBe(11);
+    expect(again.rows[0]?.n).toBe(13);
   });
 
   it('bitabar_app has no superuser, bypass-rls, create-role or login-via-git privileges', async () => {
@@ -47,14 +47,15 @@ describe('migrations (integration)', () => {
     expect(result.rows[0]?.tableowner).not.toBe('bitabar_app');
   });
 
-  it('tenant-owned tables have row-level security enabled (auth tables included)', async () => {
+  it('tenant-owned tables have row-level security enabled (auth and audit tables included)', async () => {
     const result = await ownerPool().query<{ relname: string; relrowsecurity: boolean }>(
       `SELECT relname, relrowsecurity FROM pg_class
-       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials}')
+       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials,audit_logs}')
          AND relnamespace = 'public'::regnamespace
        ORDER BY relname`,
     );
     expect(result.rows).toEqual([
+      { relname: 'audit_logs', relrowsecurity: true },
       { relname: 'auth_sessions', relrowsecurity: true },
       { relname: 'tenants', relrowsecurity: true },
       { relname: 'user_credentials', relrowsecurity: true },
@@ -127,11 +128,19 @@ describe('migrations (integration)', () => {
          ('user_roles', 'DELETE'), ('user_roles', 'TRUNCATE'),
          ('user_credentials', 'SELECT'), ('user_credentials', 'INSERT'), ('user_credentials', 'UPDATE'), ('user_credentials', 'DELETE'),
          ('auth_sessions', 'SELECT'), ('auth_sessions', 'INSERT'), ('auth_sessions', 'UPDATE'), ('auth_sessions', 'DELETE'),
-         ('auth_rate_limits', 'SELECT'), ('auth_rate_limits', 'INSERT'), ('auth_rate_limits', 'UPDATE'), ('auth_rate_limits', 'DELETE')
+         ('auth_rate_limits', 'SELECT'), ('auth_rate_limits', 'INSERT'), ('auth_rate_limits', 'UPDATE'), ('auth_rate_limits', 'DELETE'),
+         ('audit_logs', 'SELECT'), ('audit_logs', 'INSERT'), ('audit_logs', 'UPDATE'),
+         ('audit_logs', 'DELETE'), ('audit_logs', 'TRUNCATE')
        ) AS checks(t, p)
        ORDER BY t, p`,
     );
     expect(result.rows).toEqual([
+      // Append-only (ADR-009 L3): reads and inserts only; no row/table rewrite.
+      { t: 'audit_logs', p: 'DELETE', allowed: false },
+      { t: 'audit_logs', p: 'INSERT', allowed: true },
+      { t: 'audit_logs', p: 'SELECT', allowed: true },
+      { t: 'audit_logs', p: 'TRUNCATE', allowed: false },
+      { t: 'audit_logs', p: 'UPDATE', allowed: false },
       { t: 'auth_rate_limits', p: 'DELETE', allowed: true }, // TTL sweep deletes expired counters
       { t: 'auth_rate_limits', p: 'INSERT', allowed: true },
       { t: 'auth_rate_limits', p: 'SELECT', allowed: true },

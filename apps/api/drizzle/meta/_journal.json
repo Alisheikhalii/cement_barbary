@@ -78,6 +78,20 @@
       "when": 1795204600000,
       "tag": "0010_sr05_user_roles_definer",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795374386554,
+      "tag": "0011_gray_robbie_robertson",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795374404313,
+      "tag": "0012_audit_logs_append_only",
+      "breakpoints": true
     }
   ]
 }
