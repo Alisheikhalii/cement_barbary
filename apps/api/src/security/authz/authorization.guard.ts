@@ -16,6 +16,7 @@ import {
   IS_SELF_SERVICE_KEY,
   REQUIRE_PERMISSION_KEY,
 } from './decorators.js';
+import { AUDIT_HOOK, type AuditHook } from './audit-hook.js';
 import { isPermissionName, isSensitivePermission, type PermissionName } from './permissions.js';
 import { createVerifiedPrincipal, type Principal } from './principal.js';
 import { isAllowlistedPublicRoute, type GuardDenialReason } from './route-scan.js';
@@ -53,6 +54,7 @@ export class AuthorizationGuard implements CanActivate {
     @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'nodeEnv'>,
     @Inject(AuthzFreshness) private readonly freshness: AuthzFreshness,
+    @Inject(AUDIT_HOOK) private readonly audit: AuditHook,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(AuthorizationGuard.name);
@@ -123,14 +125,27 @@ export class AuthorizationGuard implements CanActivate {
         ...(principal.carrierId === undefined ? {} : { carrierId: principal.carrierId }),
       });
       if (!can(effective, permissionMetadata)) {
-        return this.deny(request, 'AUTHZ_PERMISSION_DENIED');
+        // ADR-009 L6: an authenticated 403 on a sensitive permission is an
+        // audit row (best-effort, never changes the response).
+        return this.deny(request, 'AUTHZ_PERMISSION_DENIED', {
+          principal: effective,
+          permission: permissionMetadata,
+          controller: controller.name,
+          handler: handler.name,
+        });
       }
-      return this.attachScope(request, effective, permissionMetadata);
+      return this.attachScope(request, effective, permissionMetadata, {
+        controller: controller.name,
+        handler: handler.name,
+      });
     }
     if (!can(principal, permissionMetadata)) {
       return this.deny(request, 'AUTHZ_PERMISSION_DENIED');
     }
-    return this.attachScope(request, principal, permissionMetadata);
+    return this.attachScope(request, principal, permissionMetadata, {
+      controller: controller.name,
+      handler: handler.name,
+    });
   }
 
   /**
@@ -143,11 +158,12 @@ export class AuthorizationGuard implements CanActivate {
    * that cannot be built (e.g. carrier scope without a carrier id) is logged as
    * a normal guard denial rather than escaping as an unlogged 403.
    */
-  private attachScope(
+  private async attachScope(
     request: AuthorizedRequest,
     principal: Principal,
     permission: PermissionName,
-  ): true {
+    handlerName: { readonly controller: string; readonly handler: string },
+  ): Promise<true> {
     if (request.authz !== undefined) {
       return true;
     }
@@ -162,7 +178,12 @@ export class AuthorizationGuard implements CanActivate {
       return true;
     } catch (error) {
       if (error instanceof DomainError) {
-        return this.deny(request, 'AUTHZ_SCOPE_DENIED');
+        return this.deny(request, 'AUTHZ_SCOPE_DENIED', {
+          principal,
+          permission,
+          controller: handlerName.controller,
+          handler: handlerName.handler,
+        });
       }
       throw error;
     }
@@ -188,9 +209,70 @@ export class AuthorizationGuard implements CanActivate {
    * Server-side denial log: request id + stable reason code only. Never the
    * permission name, the role list or any user-supplied text (CP1 SA-03).
    */
-  private deny(request: AuthorizedRequest, reasonCode: GuardDenialReason): never {
+  private async deny(
+    request: AuthorizedRequest,
+    reasonCode: GuardDenialReason,
+    audit?: {
+      readonly principal: Principal;
+      readonly permission: PermissionName;
+      readonly controller: string;
+      readonly handler: string;
+    },
+  ): Promise<never> {
     this.logger.warn({ reqId: request.id ?? null, reasonCode }, 'authorization denied');
+    if (audit !== undefined && isSensitivePermission(audit.permission)) {
+      await this.recordDenial(request, audit);
+    }
     throw DomainError.forbidden();
+  }
+
+  /**
+   * ADR-009 L6 denial row. Best-effort: the persistent hook opens its own
+   * short transaction, catches its own failure and never throws. The generic
+   * 403 is raised in every case.
+   */
+  private async recordDenial(
+    request: AuthorizedRequest,
+    audit: {
+      readonly principal: Principal;
+      readonly permission: PermissionName;
+      readonly controller: string;
+      readonly handler: string;
+    },
+  ): Promise<void> {
+    try {
+      await this.audit.record({
+        actor: {
+          userId: audit.principal.userId,
+          tenantId: audit.principal.tenantId,
+          sessionId: audit.principal.sessionId,
+        },
+        action: audit.permission,
+        resource: { type: 'handler', id: `${audit.controller}.${audit.handler}` },
+        reason: null,
+        outcome: 'denied',
+        httpStatus: 403,
+        requestId: this.requestId(request),
+        ip: this.clientIp(request),
+      });
+    } catch {
+      // An audit implementation must never change the authorization result.
+    }
+  }
+
+  /** Same bound as the interceptor: a truncated address is a different address. */
+  private clientIp(request: AuthorizedRequest): string | null {
+    const ip: unknown = request.ip;
+    return typeof ip === 'string' && ip.length > 0 && ip.length <= 64 ? ip : null;
+  }
+
+  /** pino's request id is `string | number`; the audit column takes a string. */
+  private requestId(request: AuthorizedRequest): string | null {
+    const id: unknown = request.id;
+    if (typeof id === 'string' && id.length > 0) {
+      return id;
+    }
+    return typeof id === 'number' ? String(id) : null;
   }
 
   /** Freshness failure: generic 401, never a 403 that reveals account state. */

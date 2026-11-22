@@ -3,10 +3,11 @@ import 'reflect-metadata';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { PinoLogger } from 'nestjs-pino';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DomainError } from '../../common/errors/domain-error.js';
 import type { AuthzFreshness } from '../../db/authz-freshness.js';
+import type { AuditHook } from './audit-hook.js';
 import { AuthorizationGuard } from './authorization.guard.js';
 import { can } from './can.js';
 import { IS_PUBLIC_KEY, REQUIRE_PERMISSION_KEY } from './decorators.js';
@@ -14,6 +15,12 @@ import { createPrincipal } from './principal.js';
 
 const freshnessRead = vi.fn();
 const freshness = { read: freshnessRead } as unknown as AuthzFreshness;
+const auditRecord = vi.fn(async () => undefined);
+const audit = { record: auditRecord } as unknown as AuditHook;
+
+beforeEach(() => {
+  auditRecord.mockClear();
+});
 
 /**
  * CP1 SA-03: a guard denial is logged server-side with the request id and a
@@ -35,7 +42,13 @@ describe('AuthorizationGuard denial logging', () => {
   it('logs only the request id and reason code', async () => {
     const warn = vi.fn();
     const logger = { setContext: vi.fn(), warn } as unknown as PinoLogger;
-    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, logger);
+    const guard = new AuthorizationGuard(
+      new Reflector(),
+      { nodeEnv: 'test' },
+      freshness,
+      audit,
+      logger,
+    );
 
     const handler = (): void => undefined;
     Reflect.defineMetadata(REQUIRE_PERMISSION_KEY, 'destination.read', handler);
@@ -75,7 +88,13 @@ describe('AuthorizationGuard denial logging', () => {
   it('uses the marker-count reason code for an unmarked route', async () => {
     const warn = vi.fn();
     const logger = { setContext: vi.fn(), warn } as unknown as PinoLogger;
-    const guard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, logger);
+    const guard = new AuthorizationGuard(
+      new Reflector(),
+      { nodeEnv: 'test' },
+      freshness,
+      audit,
+      logger,
+    );
     const handler = (): void => undefined;
     const request: Record<string, unknown> = {
       id: 'req-8',
@@ -105,16 +124,23 @@ describe('AuthorizationGuard denial logging', () => {
       originalUrl: '/auth/login',
     };
 
-    const testGuard = new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, {
-      setContext: vi.fn(),
-      warn: vi.fn(),
-    } as unknown as PinoLogger);
+    const testGuard = new AuthorizationGuard(
+      new Reflector(),
+      { nodeEnv: 'test' },
+      freshness,
+      audit,
+      {
+        setContext: vi.fn(),
+        warn: vi.fn(),
+      } as unknown as PinoLogger,
+    );
     await expect(testGuard.canActivate(contextFor(handler, request))).resolves.toBe(true);
 
     const productionGuard = new AuthorizationGuard(
       new Reflector(),
       { nodeEnv: 'production' },
       freshness,
+      audit,
       {
         setContext: vi.fn(),
         warn: vi.fn(),
@@ -126,6 +152,61 @@ describe('AuthorizationGuard denial logging', () => {
 
     request.originalUrl = '/api/v1/auth/login';
     await expect(productionGuard.canActivate(contextFor(handler, request))).resolves.toBe(true);
+  });
+});
+
+describe('AuthorizationGuard sensitive denial audit (L6)', () => {
+  const request: Record<string, unknown> = {
+    id: 'req-denied',
+    method: 'POST',
+    originalUrl: '/api/v1/authz-denial/probe',
+    auth: {
+      sub: '00000000-0000-4000-8000-000000000001',
+      tid: '00000000-0000-4000-8000-000000000002',
+      sid: '00000000-0000-4000-8000-000000000003',
+      roles: ['DRIVER'],
+    },
+  };
+  const logger = { setContext: vi.fn(), warn: vi.fn() } as unknown as PinoLogger;
+
+  it('records a denied row only for a sensitive permission', async () => {
+    const guard = new AuthorizationGuard(
+      new Reflector(),
+      { nodeEnv: 'test' },
+      freshness,
+      audit,
+      logger,
+    );
+
+    const sensitive = (): void => undefined;
+    Reflect.defineMetadata(REQUIRE_PERMISSION_KEY, 'carrier_membership.write', sensitive);
+    freshnessRead.mockResolvedValueOnce({
+      userActive: true,
+      tenantActive: true,
+      sessionLive: true,
+      roles: ['FACTORY_OPERATOR'],
+    });
+    await expect(guard.canActivate(contextFor(sensitive, request))).rejects.toBeInstanceOf(
+      DomainError,
+    );
+    expect(auditRecord).toHaveBeenCalledTimes(1);
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'carrier_membership.write',
+        outcome: 'denied',
+        httpStatus: 403,
+        reason: null,
+        requestId: 'req-denied',
+      }),
+    );
+
+    auditRecord.mockClear();
+    const nonSensitive = (): void => undefined;
+    Reflect.defineMetadata(REQUIRE_PERMISSION_KEY, 'destination.write', nonSensitive);
+    await expect(guard.canActivate(contextFor(nonSensitive, request))).rejects.toBeInstanceOf(
+      DomainError,
+    );
+    expect(auditRecord).not.toHaveBeenCalled();
   });
 });
 
@@ -143,7 +224,7 @@ describe('AuthorizationGuard sensitive freshness', () => {
   };
 
   function sensitiveGuard(): AuthorizationGuard {
-    return new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, {
+    return new AuthorizationGuard(new Reflector(), { nodeEnv: 'test' }, freshness, audit, {
       setContext: vi.fn(),
       warn: vi.fn(),
     } as unknown as PinoLogger);

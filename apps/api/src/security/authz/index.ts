@@ -51,7 +51,7 @@ export type { ResourceRef } from './can.js';
 export { assertInScope, readAuthzContext, rowInScope } from './access-scope.js';
 export type { AccessScope, AuthzContext, ScopedRow } from './access-scope.js';
 
-export { AUDIT_HOOK, NoopAuditHook } from './audit-hook.js';
+export { AUDIT_HOOK } from './audit-hook.js';
 export type {
   AuditActor,
   AuditHook,

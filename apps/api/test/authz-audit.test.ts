@@ -14,7 +14,9 @@ import { APP_CONFIG } from '../src/config/config.module.js';
 import { parseEnv, type AppConfig } from '../src/config/env.js';
 import { AuthzFreshness } from '../src/db/authz-freshness.js';
 import { DbHealth } from '../src/db/db-health.js';
+import { TenantDb } from '../src/db/tenant-db.js';
 import { TokenService } from '../src/modules/auth/token.service.js';
+import { PersistentAuditHook } from '../src/modules/audit/persistent-audit-hook.js';
 import { AUDIT_HOOK, type AuditHook, type AuditRecord } from '../src/security/authz/audit-hook.js';
 import { RequirePermission, ZodBody } from '../src/security/authz/decorators.js';
 import { sensitiveReasonSchema } from '../src/security/authz/sensitive-reason.js';
@@ -35,9 +37,14 @@ const SECRET_REASON = 'دلیل محرمانه تست شماره دو';
 const order: string[] = [];
 const records: AuditRecord[] = [];
 
+let failSuccessWrite = false;
+
 const auditHook: AuditHook = {
   record(entry: AuditRecord): void {
     order.push('audit');
+    if (failSuccessWrite && entry.outcome === 'success') {
+      throw new Error('AUDIT_DOWN');
+    }
     records.push(entry);
   },
 };
@@ -111,7 +118,13 @@ async function buildAuditApp(
     .overrideProvider(AuthzFreshness)
     .useValue(freshness)
     .overrideProvider(AUDIT_HOOK)
-    .useValue(auditHook);
+    .useValue(auditHook)
+    // Unit test: no database. The interceptor's outer transaction is stubbed;
+    // the real transaction is exercised by test/audit-interceptor.int.test.ts.
+    .overrideProvider(TenantDb)
+    .useValue({
+      run: async (fn: (tx: unknown) => Promise<unknown>) => fn(undefined),
+    });
   if (config !== undefined) {
     builder.overrideProvider(APP_CONFIG).useValue(config);
   }
@@ -141,6 +154,7 @@ beforeAll(async () => {
 beforeEach(() => {
   order.length = 0;
   records.length = 0;
+  failSuccessWrite = false;
   freshness.read.mockClear();
 });
 
@@ -159,18 +173,21 @@ describe('sensitive audit hook', () => {
 
     expect(response.body.data).toEqual({ length: REASON.length });
     expect(order).toEqual(['handler', 'audit']);
-    expect(records).toEqual([
-      {
-        actor: { userId: USER_ID, tenantId: TENANT_ID, sessionId: SESSION_ID },
-        action: ACTION,
-        resource: {
-          type: 'handler',
-          id: 'AuthzAuditProbeController.success',
-        },
-        reason: REASON,
-        outcome: 'success',
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      actor: { userId: USER_ID, tenantId: TENANT_ID, sessionId: SESSION_ID },
+      action: ACTION,
+      resource: {
+        type: 'handler',
+        id: 'AuthzAuditProbeController.success',
       },
-    ]);
+      reason: REASON,
+      outcome: 'success',
+      // POST default, derived before Nest applies it (F1-06 L6).
+      httpStatus: 201,
+    });
+    expect(records[0]?.requestId).toEqual(expect.any(String));
+    expect(records[0]?.ip).toMatch(/127\.0\.0\.1|::1/);
   });
 
   it('records failure after the handler and rethrows the original error', async () => {
@@ -189,6 +206,7 @@ describe('sensitive audit hook', () => {
       action: ACTION,
       reason: REASON,
       outcome: 'failure',
+      httpStatus: 500,
     });
   });
 
@@ -202,18 +220,33 @@ describe('sensitive audit hook', () => {
     // The pipe rejects before the handler, so only the audit step ran.
     expect(order).toEqual(['audit']);
     expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({ action: ACTION, reason: null, outcome: 'failure' });
+    expect(records[0]).toMatchObject({
+      action: ACTION,
+      reason: null,
+      outcome: 'failure',
+      httpStatus: 400,
+    });
   });
 
-  it('does not record anything when a guard denies before the interceptor', async () => {
+  it('records a denied row when a guard denies a sensitive permission (L6)', async () => {
     const response = await request(app.getHttpServer())
       .post('/authz-audit-probe/success')
       .set(bearer(carrierToken))
       .send({ reason: SECRET_REASON })
       .expect(403);
 
-    expect(records).toHaveLength(0);
-    expect(order).toEqual([]);
+    // F1-06 T05: the guard audits a sensitive 403; the reason is never read
+    // there and the response is unchanged.
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      action: ACTION,
+      outcome: 'denied',
+      httpStatus: 403,
+      reason: null,
+    });
+    expect(JSON.stringify(records[0])).not.toContain(SECRET_REASON);
+    // Only the guard's audit step ran; the handler never executed.
+    expect(order).toEqual(['audit']);
 
     const serialized = JSON.stringify(response.body);
     expect(serialized).not.toContain(ACTION);
@@ -222,6 +255,24 @@ describe('sensitive audit hook', () => {
     expect(serialized).toBe(
       JSON.stringify({ error: { code: 'FORBIDDEN', message: 'دسترسی مجاز نیست' } }),
     );
+  });
+
+  it('fails the request when the success audit write fails (fail-closed, ADR-009 L1)', async () => {
+    failSuccessWrite = true;
+    const response = await request(app.getHttpServer())
+      .post('/authz-audit-probe/success')
+      .set(bearer(operatorToken))
+      .send({ reason: REASON })
+      .expect(500);
+
+    // A non-domain error maps to the generic 500 body.
+    expect(response.body).toEqual({
+      error: { code: 'INTERNAL_ERROR', message: 'خطای داخلی سرور رخ داد' },
+    });
+    // The success attempt threw, then the failure row was attempted.
+    expect(order).toEqual(['handler', 'audit', 'audit']);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ outcome: 'failure', httpStatus: 500 });
   });
 
   it('does not record anything for an anonymous request', async () => {
@@ -244,6 +295,24 @@ describe('sensitive audit hook', () => {
 });
 
 describe('production surface', () => {
+  it('binds the persistent hook, not the no-op implementation (F1-06 T05)', async () => {
+    // No AUDIT_HOOK override: the real provider graph. No query runs during
+    // instantiation (the pg pool is lazy).
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(DbHealth)
+      .useValue(dbHealthStub)
+      .overrideProvider(AuthzFreshness)
+      .useValue(freshness)
+      .compile();
+    const bound = moduleRef.createNestApplication();
+    await bound.init();
+    try {
+      expect(bound.get(AUDIT_HOOK)).toBeInstanceOf(PersistentAuditHook);
+    } finally {
+      await bound.close();
+    }
+  });
+
   it('refuses to load the audit probe module in production', async () => {
     const productionConfig: AppConfig = parseEnv({
       NODE_ENV: 'production',

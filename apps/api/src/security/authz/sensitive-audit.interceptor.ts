@@ -9,10 +9,15 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import required: emitDecoratorMetadata emits PinoLogger as the constructor param type for DI
 import { PinoLogger } from 'nestjs-pino';
-import { catchError, concatMap, from, mergeMap, throwError, type Observable } from 'rxjs';
+import { from, lastValueFrom, type Observable } from 'rxjs';
 
+import { runWithAuditChanges } from '../../modules/audit/audit-context.js';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import required: emitDecoratorMetadata emits TenantContext as the constructor param type for DI
+import { TenantContext } from '../../db/tenant-context.js';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import required: emitDecoratorMetadata emits TenantDb as the constructor param type for DI
+import { TenantDb } from '../../db/tenant-db.js';
 import { readAuthzContext } from './access-scope.js';
-import { AUDIT_HOOK, type AuditHook, type AuditOutcome, type AuditRecord } from './audit-hook.js';
+import { AUDIT_HOOK, type AuditHook, type AuditRecord } from './audit-hook.js';
 import { BODY_SCHEMA_KEY, REQUIRE_PERMISSION_KEY } from './decorators.js';
 import { isSensitivePermission } from './permissions.js';
 
@@ -25,18 +30,22 @@ interface SafeParseSchema {
 }
 
 /**
- * Sensitive-action audit (ADR-008 Z10, CP1 SA-02/SA-03, F1-05 T06).
+ * Sensitive-action audit (ADR-008 Z10, ADR-009 L1b/L6, F1-05 T06, F1-06 T05).
  *
- * Runs around every route whose permission is catalog-sensitive. After the
- * handler settles it calls AuditHook exactly once:
- *  - success: after the handler returned;
- *  - failure: after a pipe or handler error, before the original error is
- *    rethrown (the response is unchanged).
+ * Runs around every route whose permission is catalog-sensitive and calls
+ * AuditHook exactly once:
+ *  - success: the handler executes INSIDE an outer tenant transaction; the
+ *    persistent hook appends the audit row in that same transaction, so a
+ *    committed sensitive change always has its audit row (fail-closed).
+ *  - failure: after the transaction rolled back, the hook writes a best-effort
+ *    `failure` row in a fresh transaction and the original error is rethrown
+ *    (the response is unchanged).
  *
- * The reason is parsed from the request body with the exact schema recorded by
- * `@ZodBody`; it is never taken from a header/query/param and never logged
- * here. Guard denials happen BEFORE interceptors and are handled by the guard's
- * reason-code log, not by this hook.
+ * `auditChange()` calls made by the handler are collected and stored as the
+ * before/after snapshots. The reason is parsed from the request body with the
+ * exact schema recorded by `@ZodBody`; it is never taken from a header/query/
+ * param and never logged here. Guard denials happen BEFORE interceptors and are
+ * audited by the guard itself (L6).
  */
 
 @Injectable()
@@ -44,6 +53,8 @@ export class SensitiveAuditInterceptor implements NestInterceptor {
   constructor(
     @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(AUDIT_HOOK) private readonly hook: AuditHook,
+    private readonly tenantContext: TenantContext,
+    private readonly tenantDb: TenantDb,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(SensitiveAuditInterceptor.name);
@@ -57,65 +68,66 @@ export class SensitiveAuditInterceptor implements NestInterceptor {
     }
 
     const request = context.switchToHttp().getRequest<AuditedRequest>();
-    // Exactly one record per request, even if a handler returns a stream that
-    // emits more than once or emits before failing.
-    let recorded = false;
-    const recordOnce = async (outcome: AuditOutcome): Promise<void> => {
-      if (recorded) {
-        return;
-      }
-      recorded = true;
-      await this.recordSafely(context, request, permission, outcome);
-    };
-
-    return next.handle().pipe(
-      concatMap(async (value: unknown) => {
-        await recordOnce('success');
-        return value;
-      }),
-      catchError((error: unknown) =>
-        from(recordOnce('failure')).pipe(mergeMap(() => throwError(() => error))),
-      ),
-    );
+    return from(this.runAudited(context, request, permission, next));
   }
 
-  /**
-   * The hook is observational: a failing hook must not change the HTTP result.
-   * The catch logs only the request id, outcome and error class — never the
-   * permission name, the actor or the reason text.
-   */
-  private async recordSafely(
+  private async runAudited(
     context: ExecutionContext,
     request: AuditedRequest,
     action: string,
-    outcome: AuditOutcome,
-  ): Promise<void> {
+    next: CallHandler,
+  ): Promise<unknown> {
+    const { principal } = readAuthzContext(request);
+    const base: Omit<AuditRecord, 'outcome'> = {
+      actor: {
+        userId: principal.userId,
+        tenantId: principal.tenantId,
+        sessionId: principal.sessionId,
+      },
+      action,
+      resource: {
+        type: 'handler',
+        id: `${context.getClass().name}.${context.getHandler().name}`,
+      },
+      reason: this.reasonFor(context.getHandler(), request.body),
+      requestId: requestIdOf(request),
+      ip: clientIp(request),
+      ...(principal.carrierId === undefined ? {} : { carrierId: principal.carrierId }),
+    };
+
     try {
-      const { principal } = readAuthzContext(request);
-      const record: AuditRecord = {
-        actor: {
-          userId: principal.userId,
-          tenantId: principal.tenantId,
-          sessionId: principal.sessionId,
-        },
-        action,
-        resource: {
-          type: 'handler',
-          id: `${context.getClass().name}.${context.getHandler().name}`,
-        },
-        reason: this.reasonFor(context.getHandler(), request.body),
-        outcome,
-      };
-      await this.hook.record(record);
-    } catch (error) {
-      this.logger.warn(
-        {
-          reqId: request.id ?? null,
-          outcome,
-          errorName: error instanceof Error ? error.name : 'Unknown',
-        },
-        'audit hook failed',
+      // The full scope, not just the tenant: a carrier-scoped handler's own
+      // `TenantContext.run` must match this inner scope (F1-08).
+      const scope =
+        principal.carrierId === undefined
+          ? { tenantId: principal.tenantId }
+          : { tenantId: principal.tenantId, carrierId: principal.carrierId };
+      return await this.tenantContext.run(scope, () =>
+        this.tenantDb.run(async () => {
+          const { result, changes } = await runWithAuditChanges(() => lastValueFrom(next.handle()));
+          const record: AuditRecord = {
+            ...base,
+            outcome: 'success',
+            httpStatus: successStatus(context),
+            ...(changes.length > 0 ? { changes } : {}),
+          };
+          // Same transaction as the handler: if this insert fails, the change
+          // does not commit either.
+          await this.hook.record(record);
+          return result;
+        }),
       );
+    } catch (error) {
+      // The handler's transaction is already rolled back. Failure rows are
+      // best-effort (ADR-009 C3); the hook swallows their errors and never
+      // changes the response. A failure of the SUCCESS write lands here too:
+      // the hook propagated it so this transaction rolled back (fail-closed).
+      await this.hook.record({
+        ...base,
+        outcome: 'failure',
+        httpStatus: failureStatus(error),
+      });
+      throw error;
     }
   }
 
@@ -136,6 +148,54 @@ export class SensitiveAuditInterceptor implements NestInterceptor {
     const reason = (parsed.data as { reason?: unknown }).reason;
     return typeof reason === 'string' ? reason : null;
   }
+}
+
+/**
+ * The status Nest will actually send (F1-06 L6). At interceptor time Nest has
+ * not applied `@HttpCode`/the POST default yet, so those are derived the same
+ * way the Express adapter does; a handler that used `@Res()` already sent
+ * headers and its own status wins.
+ */
+function successStatus(context: ExecutionContext): number {
+  const response = context
+    .switchToHttp()
+    .getResponse<{ readonly headersSent?: boolean; readonly statusCode?: number }>();
+  if (response.headersSent === true && typeof response.statusCode === 'number') {
+    return response.statusCode;
+  }
+  const explicit: unknown = Reflect.getMetadata('__httpCode__', context.getHandler());
+  if (typeof explicit === 'number') {
+    return explicit;
+  }
+  const method = context.switchToHttp().getRequest<{ method?: string }>().method;
+  return method === 'POST' ? 201 : 200;
+}
+
+function failureStatus(error: unknown): number {
+  if (typeof error === 'object' && error !== null) {
+    const candidate = error as { statusCode?: unknown; status?: unknown };
+    for (const value of [candidate.statusCode, candidate.status]) {
+      if (typeof value === 'number' && value >= 400 && value <= 599) {
+        return value;
+      }
+    }
+  }
+  return 500;
+}
+
+/** pino's request id is `string | number`; only a string column can hold it. */
+function requestIdOf(request: Request): string | null {
+  const id: unknown = request.id;
+  if (typeof id === 'string' && id.length > 0) {
+    return id;
+  }
+  return typeof id === 'number' ? String(id) : null;
+}
+
+/** Bounded raw client IP; anything longer than an address is dropped. */
+function clientIp(request: Request): string | null {
+  const ip = request.ip;
+  return typeof ip === 'string' && ip.length > 0 && ip.length <= 64 ? ip : null;
 }
 
 function isSafeParseSchema(value: unknown): value is SafeParseSchema {

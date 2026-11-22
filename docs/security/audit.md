@@ -31,7 +31,9 @@ against a human typing PII into it.
 
 - **Success rows are atomic with the change.** `AuditWriter.append()` runs inside the caller's `TenantDb.run`
   transaction (nested `TenantDb.run` reuses it). If the change commits, the row exists; if the audit insert fails,
-  the change does not commit.
+  the change does not commit. That failure is **not** swallowed: `PersistentAuditHook` propagates it, the
+  interceptor's transaction rolls back and the request fails with 500 (fail-closed). Only `failure`/`denied` writes
+  are best-effort.
 - **Failure and denial rows are best-effort.** They are written after the original transaction rolled back, in a
   separate transaction, bounded by a 2 s timeout. A DB/process failure in that window loses the row; the failure is
   logged with the request id and the HTTP response is never changed. The security log still records the denial.
@@ -42,7 +44,15 @@ against a human typing PII into it.
 - **Final HTTP status.** Success rows store the status Nest will send: `@HttpCode` metadata first, otherwise the
   POST default 201 / otherwise 200, and the handler's own status when it used `@Res()`. Failure rows store the
   error's status (500 for an unknown error); denial rows store 403. This closes the F1-05 “outcome ≠ final status”
-  note.
+  note. Caveat: a handler that uses `@Redirect` (or lets a later interceptor/Nest layer change the status after
+  this one settles) is recorded with the derived status; no such route exists in F1-06.
+- **The row describes the changed resource, not the route.** When the handler called `auditChange()`, the row's
+  `resource_type`/`resource_id` come from the LAST change (the snapshot allowlist is keyed by that entity), and
+  `metadata.handler` keeps the `Controller.method` for traceability. Without a change, the row describes the
+  handler. Multiple changes: the last one fills `before`/`after`, `metadata.changeCount`/`resources` list them.
+- **Carrier scope.** The interceptor opens the full principal scope (`tenantId` + `carrierId` when present), and
+  the hook reuses that active scope instead of re-entering `TenantContext.run` (a different scope would be rejected
+  while the transaction is open). Guard denial rows have no active scope and open their own.
 - **Append-only.** `bitabar_app` has `SELECT, INSERT` only; a row trigger blocks UPDATE/DELETE and a statement
   trigger blocks TRUNCATE for every role, including the migration owner. The migration fails closed if a REVOKE
   did not stick (`42501 AUDIT_REVOKE_INCOMPLETE`).
@@ -57,7 +67,8 @@ against a human typing PII into it.
    allowed. A new column is invisible to audit until it is added deliberately.
 3. In the service, after the write succeeds and inside the same transaction, call
    `auditChange({ resourceType, resourceId, before, after })`, then `AuditWriter.append({ action, outcome:
-'success', … })` — or let a sensitive route's interceptor do it.
+'success', … })` — or let a sensitive route's interceptor do it. The row then names the changed entity/id (the
+   snapshot allowlist key must be that `resourceType`).
 4. Include `reason` **only** where the route schema declares it; never invent a reason for a non-sensitive action.
 5. Add a test: success row exists with the right tenant/actor; a rolled-back business change leaves no row; the
    PII sweep (no phone, national id, password, token, cookie or raw IP in any text/jsonb column) stays green.

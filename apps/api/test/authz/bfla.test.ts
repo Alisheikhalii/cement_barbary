@@ -12,6 +12,8 @@ import { z } from 'zod';
 import { AppModule } from '../../src/app.module.js';
 import { AuthzFreshness } from '../../src/db/authz-freshness.js';
 import { DbHealth } from '../../src/db/db-health.js';
+import { TenantDb } from '../../src/db/tenant-db.js';
+import { AUDIT_HOOK } from '../../src/security/authz/audit-hook.js';
 import { TokenService } from '../../src/modules/auth/token.service.js';
 import { RequirePermission, ZodBody } from '../../src/security/authz/decorators.js';
 import {
@@ -282,6 +284,12 @@ beforeAll(async () => {
     .useValue(dbHealthStub)
     .overrideProvider(AuthzFreshness)
     .useValue(freshness)
+    // Unit test without a database (F1-06 T05): the sensitive audit path is
+    // exercised by test/authz-audit.test.ts and the int suites.
+    .overrideProvider(AUDIT_HOOK)
+    .useValue({ record: async (): Promise<void> => undefined })
+    .overrideProvider(TenantDb)
+    .useValue({ run: async (fn: (tx: unknown) => Promise<unknown>) => fn(undefined) })
     .compile();
   app = moduleRef.createNestApplication();
   await app.init();
