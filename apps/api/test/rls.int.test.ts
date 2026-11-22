@@ -479,55 +479,114 @@ describe('RLS isolation suite (runtime role)', () => {
     expect((check.rows[0] as { deleted_at: Date | null }).deleted_at).not.toBeNull();
   });
 
-  it('user_roles — context A sees only A’s links; deleting B’s link affects 0 rows; own delete works', async () => {
-    await inTenant(tenantA, async (tx) => {
+  it('user_roles — context A sees only A’s links; direct DML is 42501; function paths isolate', async () => {
+    const links = await inTenant(tenantA, async (tx) => {
       const visible = await tx.execute(sql`select tenant_id, user_id, role_code from user_roles`);
       const rows = visible.rows as { tenant_id: string; user_id: string; role_code: string }[];
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.every((r) => r.tenant_id === tenantA)).toBe(true);
       expect(rows.map((r) => r.user_id)).not.toContain(userB);
 
-      const denied = await tx.execute(sql`delete from user_roles where user_id = ${userB}`);
-      expect(denied.rowCount).toBe(0);
-
-      const own = await tx.execute(
-        sql`delete from user_roles where user_id = ${userADeletable} and role_code = 'DRIVER'`,
+      // SR-05: bitabar_app has no direct write privilege on user_roles.
+      const other = await tx.execute(
+        sql`select app.revoke_user_role(${userB}, 'DRIVER') as removed`,
       );
-      expect(own.rowCount).toBe(1);
+      const own = await tx.execute(
+        sql`select app.revoke_user_role(${userADeletable}, 'DRIVER') as removed`,
+      );
+      return {
+        otherRemoved: (other.rows[0] as { removed: boolean }).removed,
+        ownRemoved: (own.rows[0] as { removed: boolean }).removed,
+      };
     });
+    expect(links.otherRemoved).toBe(false);
+    expect(links.ownRemoved).toBe(true);
+
+    // Direct DML is denied at the grant layer, before RLS/FK/CHECK.
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(sql`delete from user_roles where user_id = ${userB}`);
+      }),
+      '42501',
+    );
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
+              values (${tenantA}, ${userA}, 'DRIVER', 'driver')`,
+        );
+      }),
+      '42501',
+    );
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(
+          sql`update user_roles set role_scope = 'carrier' where user_id = ${userA}`,
+        );
+      }),
+      '42501',
+    );
+    await expectPgRejection(
+      inTenant(tenantA, async (tx) => {
+        await tx.execute(sql`truncate user_roles`);
+      }),
+      '42501',
+    );
+
     const check = await ownerPool().query(
       'select count(*)::int as n from user_roles where user_id = $1',
       [userB],
     );
     expect(check.rows[0]?.n).toBe(1);
+    const gone = await ownerPool().query(
+      'select count(*)::int as n from user_roles where user_id = $1',
+      [userADeletable],
+    );
+    expect(gone.rows[0]?.n).toBe(0);
   });
 
-  it('user_roles — cross-tenant link, platform role, forged scope and RLS write-check are all rejected', async () => {
-    // (a) Link to B's user from tenant A: WITH CHECK passes (tenant A) but the
-    // composite FK (tenant_id, user_id) -> users has no such pair → 23503.
+  it('user_roles — functions reject other-tenant/platform roles and derive scope from the catalog', async () => {
+    // Other-tenant user is invisible: assign raises USER_NOT_FOUND (P0002).
     await expectPgRejection(
       inTenant(tenantA, async (tx) => {
-        await tx.execute(
-          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
-              values (${tenantA}, ${userB}, 'DRIVER', 'driver')`,
-        );
+        await tx.execute(sql`select app.assign_user_role(${userB}, 'DRIVER')`);
       }),
-      '23503',
+      'P0002',
     );
-    // (b) Platform scope: 'PLATFORM_ADMIN' no longer exists in the catalog
-    // (removed in 0004, T05b), but PostgreSQL evaluates CHECK constraints
-    // before the AFTER ROW triggers that enforce FKs — so the CHECK
-    // (role_scope <> 'platform') is still what fires → 23514, as the app AND
-    // as the owner (the CHECK holds even for the role that bypasses RLS).
-    await expectPgRejection(
-      inTenant(tenantA, async (tx) => {
-        await tx.execute(
-          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
-              values (${tenantA}, ${userA}, 'PLATFORM_ADMIN', 'platform')`,
-        );
-      }),
-      '23514',
+    // Platform/removed roles are not in the catalog: INVALID_ROLE (22023).
+    for (const bad of ['PLATFORM_ADMIN', 'AUDITOR', 'CARRIER_OPERATOR', 'NINJA']) {
+      await expectPgRejection(
+        inTenant(tenantA, async (tx) => {
+          await tx.execute(sql`select app.assign_user_role(${userA}, ${bad})`);
+        }),
+        '22023',
+      );
+      await expectPgRejection(
+        inTenant(tenantA, async (tx) => {
+          await tx.execute(sql`select app.revoke_user_role(${userA}, ${bad})`);
+        }),
+        '22023',
+      );
+    }
+
+    // Scope is derived from public.roles, never supplied by the caller.
+    await inTenant(tenantA, async (tx) => {
+      const res = await tx.execute(
+        sql`select app.assign_user_role(${userA}, 'DRIVER') as assigned`,
+      );
+      expect((res.rows[0] as { assigned: boolean }).assigned).toBe(true);
+    });
+    const link = await ownerPool().query<{ role_scope: string }>(
+      `select role_scope from user_roles
+        where tenant_id = $1 and user_id = $2 and role_code = 'DRIVER'`,
+      [tenantA, userA],
     );
+    expect(link.rows[0]?.role_scope).toBe('driver');
+    await inTenant(tenantA, async (tx) => {
+      await tx.execute(sql`select app.revoke_user_role(${userA}, 'DRIVER')`);
+    });
+
+    // The table constraints remain defense in depth for the owner path too.
     await expectPgRejection(
       ownerPool().query(
         `insert into user_roles (tenant_id, user_id, role_code, role_scope)
@@ -536,30 +595,21 @@ describe('RLS isolation suite (runtime role)', () => {
       ),
       '23514',
     );
-    // (c) Forged scope for a real role: DRIVER exists with scope 'driver', so
-    // the pair ('DRIVER','carrier') is not in roles → composite FK violation
-    // 23503. The scope cannot lie. (DRIVER is used because userA holds no
-    // DRIVER link — a held role would hit the PK first and prove nothing
-    // about the FK.)
     await expectPgRejection(
-      inTenant(tenantA, async (tx) => {
-        await tx.execute(
-          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
-              values (${tenantA}, ${userA}, 'DRIVER', 'carrier')`,
-        );
-      }),
+      ownerPool().query(
+        `insert into user_roles (tenant_id, user_id, role_code, role_scope)
+         values ($1, $2, 'DRIVER', 'carrier')`,
+        [tenantA, userA],
+      ),
       '23503',
     );
-    // (d) A link row carrying tenant B's id, inserted from context A → RLS
-    // WITH CHECK rejects it → 42501.
     await expectPgRejection(
-      inTenant(tenantA, async (tx) => {
-        await tx.execute(
-          sql`insert into user_roles (tenant_id, user_id, role_code, role_scope)
-              values (${tenantB}, ${userB}, 'DRIVER', 'driver')`,
-        );
-      }),
-      '42501',
+      ownerPool().query(
+        `insert into user_roles (tenant_id, user_id, role_code, role_scope)
+         values ($1, $2, 'DRIVER', 'driver')`,
+        [tenantA, userB],
+      ),
+      '23503',
     );
   });
 

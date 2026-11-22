@@ -131,14 +131,17 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
 
   // ---------- 1. Privileges and catalog hardening ----------
 
-  it('PUBLIC has no EXECUTE on any lookup; bitabar_app does; no other grantees', async () => {
+  it('PUBLIC has no EXECUTE on any function; bitabar_app does; no other grantees', async () => {
     const res = await owner.query<{ proname: string; proacl: string | null }>(
       `SELECT p.proname, p.proacl::text AS proacl
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'app'
-         AND p.proname IN ('list_tenants','auth_lookup_username','auth_lookup_phone','auth_lookup_session')`,
+         AND p.proname IN (
+           'list_tenants','auth_lookup_username','auth_lookup_phone','auth_lookup_session',
+           'assign_user_role','revoke_user_role'
+         )`,
     );
-    expect(res.rows).toHaveLength(4);
+    expect(res.rows).toHaveLength(6);
     for (const row of res.rows) {
       const entries = (row.proacl ?? '').replace(/^\{|\}$/g, '').split(',');
       // The PUBLIC grantee renders as an empty name before '=' — it must be gone.
@@ -161,12 +164,16 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
        UNION ALL SELECT 'phone',
               has_function_privilege('bitabar_app','app.auth_lookup_phone(jsonb)','EXECUTE')
        UNION ALL SELECT 'session',
-              has_function_privilege('bitabar_app','app.auth_lookup_session(text)','EXECUTE')`,
+              has_function_privilege('bitabar_app','app.auth_lookup_session(text)','EXECUTE')
+       UNION ALL SELECT 'assign',
+              has_function_privilege('bitabar_app','app.assign_user_role(uuid,text)','EXECUTE')
+       UNION ALL SELECT 'revoke',
+              has_function_privilege('bitabar_app','app.revoke_user_role(uuid,text)','EXECUTE')`,
     );
     expect(checks.rows.every((r) => r.can)).toBe(true);
   });
 
-  it('functions are SECURITY DEFINER, owned by the migration owner, STABLE, search_path-pinned, static SQL', async () => {
+  it('functions are SECURITY DEFINER, owned by the migration owner, search_path-pinned, static SQL', async () => {
     const res = await owner.query<{
       proname: string;
       prosecdef: boolean;
@@ -179,16 +186,22 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
               p.proconfig, pg_get_functiondef(p.oid) AS def
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'app'
-         AND p.proname IN ('list_tenants','auth_lookup_username','auth_lookup_phone','auth_lookup_session')`,
+         AND p.proname IN (
+           'list_tenants','auth_lookup_username','auth_lookup_phone','auth_lookup_session',
+           'assign_user_role','revoke_user_role'
+         )`,
     );
-    expect(res.rows).toHaveLength(4);
+    expect(res.rows).toHaveLength(6);
     const migrationOwner = (await owner.query<{ u: string }>('SELECT current_user AS u')).rows[0]
       ?.u;
+    const volatileWriters = new Set(['assign_user_role', 'revoke_user_role']);
     for (const f of res.rows) {
       expect(f.prosecdef, `${f.proname} is SECURITY DEFINER`).toBe(true);
       // Owned by the MIGRATION owner specifically (not merely "not the app").
       expect(f.owner, `${f.proname} owner`).toBe(migrationOwner);
-      expect(f.provolatile, `${f.proname} volatility`).toBe('s');
+      expect(f.provolatile, `${f.proname} volatility`).toBe(
+        volatileWriters.has(f.proname) ? 'v' : 's',
+      );
       expect(f.proconfig ?? [], `${f.proname} search_path`).toContain(
         'search_path=pg_catalog, pg_temp',
       );
@@ -196,14 +209,20 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
       expect(/\bEXECUTE\b/i.test(f.def), `${f.proname} dynamic SQL`).toBe(false);
       expect(/format\(/i.test(f.def), `${f.proname} format()`).toBe(false);
       expect(/public\.[a-z_]+/.test(f.def)).toBe(true);
-      expect(/(?<!\.)\b(tenants|users|user_credentials|user_roles)\b/.test(f.def)).toBe(false);
+      // Strip SQL comments before looking for unqualified table references;
+      // comments may mention a table name without being a table reference.
+      const sqlOnly = f.def.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      const unqualified = sqlOnly.match(
+        /\b(?:FROM|JOIN|USING|UPDATE|INTO|REFERENCES|TRUNCATE(?:\s+TABLE)?)\s+(tenants|users|user_credentials|user_roles|roles|auth_sessions)\b/i,
+      );
+      expect(unqualified?.[0], `${f.proname} unqualified table`).toBeUndefined();
     }
   });
 
-  it('the four lookups are the COMPLETE set of SECURITY DEFINER functions in schema app', async () => {
+  it('the six functions are the COMPLETE set of SECURITY DEFINER functions in schema app', async () => {
     // Any future definer function — the only way to cross RLS without a
     // context (A17) — must be added here deliberately, with the hardening
-    // checklist and a review. A silent fifth fails this test.
+    // checklist and a review. A silent seventh fails this test.
     const res = await owner.query<{ proname: string }>(
       `SELECT p.proname
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -211,10 +230,12 @@ describe('SECURITY DEFINER auth lookups (runtime role, no tenant context)', () =
        ORDER BY p.proname`,
     );
     expect(res.rows.map((r) => r.proname)).toEqual([
+      'assign_user_role',
       'auth_lookup_phone',
       'auth_lookup_session',
       'auth_lookup_username',
       'list_tenants',
+      'revoke_user_role',
     ]);
   });
 

@@ -15,14 +15,14 @@ describe('migrations (integration)', () => {
     const journal = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(journal.rows[0]?.n).toBe(10);
+    expect(journal.rows[0]?.n).toBe(11);
 
     // Second run: no error, no new journal rows.
     await expect(runMigrations(inject('ownerUrl'))).resolves.toBeUndefined();
     const again = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(again.rows[0]?.n).toBe(10);
+    expect(again.rows[0]?.n).toBe(11);
   });
 
   it('bitabar_app has no superuser, bypass-rls, create-role or login-via-git privileges', async () => {
@@ -117,13 +117,14 @@ describe('migrations (integration)', () => {
     }
   });
 
-  it('bitabar_app can read roles but not write them; users is soft-delete only (U13)', async () => {
+  it('bitabar_app can read roles and user_roles but not write them; users is soft-delete only (U13/SR-05)', async () => {
     const result = await ownerPool().query<{ t: string; p: string; allowed: boolean }>(
       `SELECT t, p, has_table_privilege('bitabar_app', t::regclass, p) AS allowed
        FROM (VALUES
          ('roles', 'SELECT'), ('roles', 'INSERT'), ('roles', 'UPDATE'), ('roles', 'DELETE'),
          ('users', 'SELECT'), ('users', 'INSERT'), ('users', 'UPDATE'), ('users', 'DELETE'),
-         ('user_roles', 'SELECT'), ('user_roles', 'INSERT'), ('user_roles', 'UPDATE'), ('user_roles', 'DELETE'),
+         ('user_roles', 'SELECT'), ('user_roles', 'INSERT'), ('user_roles', 'UPDATE'),
+         ('user_roles', 'DELETE'), ('user_roles', 'TRUNCATE'),
          ('user_credentials', 'SELECT'), ('user_credentials', 'INSERT'), ('user_credentials', 'UPDATE'), ('user_credentials', 'DELETE'),
          ('auth_sessions', 'SELECT'), ('auth_sessions', 'INSERT'), ('auth_sessions', 'UPDATE'), ('auth_sessions', 'DELETE'),
          ('auth_rate_limits', 'SELECT'), ('auth_rate_limits', 'INSERT'), ('auth_rate_limits', 'UPDATE'), ('auth_rate_limits', 'DELETE')
@@ -147,10 +148,12 @@ describe('migrations (integration)', () => {
       { t: 'user_credentials', p: 'INSERT', allowed: true },
       { t: 'user_credentials', p: 'SELECT', allowed: true },
       { t: 'user_credentials', p: 'UPDATE', allowed: true },
-      { t: 'user_roles', p: 'DELETE', allowed: true },
-      { t: 'user_roles', p: 'INSERT', allowed: true },
+      // SR-05: reads stay, every direct write (including TRUNCATE) is gone.
+      { t: 'user_roles', p: 'DELETE', allowed: false },
+      { t: 'user_roles', p: 'INSERT', allowed: false },
       { t: 'user_roles', p: 'SELECT', allowed: true },
-      { t: 'user_roles', p: 'UPDATE', allowed: true },
+      { t: 'user_roles', p: 'TRUNCATE', allowed: false },
+      { t: 'user_roles', p: 'UPDATE', allowed: false },
       { t: 'users', p: 'DELETE', allowed: false },
       { t: 'users', p: 'INSERT', allowed: true },
       { t: 'users', p: 'SELECT', allowed: true },

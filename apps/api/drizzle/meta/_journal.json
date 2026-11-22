@@ -71,6 +71,13 @@
       "when": 1795204499433,
       "tag": "0009_revoke_sessions_on_tenant_inactive",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795204600000,
+      "tag": "0010_sr05_user_roles_definer",
+      "breakpoints": true
     }
   ]
 }

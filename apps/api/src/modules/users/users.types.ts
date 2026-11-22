@@ -12,9 +12,10 @@ export const ASSIGNABLE_ROLES = ['FACTORY_OPERATOR', 'CARRIER_ADMIN', 'DRIVER'] 
 export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 /**
- * Scope per role. This copy is re-verified on every write by the composite FK
- * (role_code, role_scope) → roles(code, scope), so it can never drift from the
- * catalog without an FK violation.
+ * Scope per role, kept as a reviewed mirror for tests and tooling. Production
+ * writes no longer send it: app.assign_user_role derives role_scope from
+ * public.roles inside the database (SR-05), and the composite FK still rejects
+ * any mismatch.
  */
 export const ROLE_SCOPE: Record<AssignableRole, 'tenant' | 'carrier' | 'driver'> = {
   FACTORY_OPERATOR: 'tenant',

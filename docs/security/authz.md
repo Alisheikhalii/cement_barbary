@@ -152,6 +152,10 @@ internal reason with the request id; they never carry PII or tokens.
   consistent snapshot.
 - `UsersRepository.assignRole` / `revokeRole` revoke **all** sessions of that user in the same
   transaction. A role change forces re-login, so an old token cannot carry the old role forward.
+- SR-05 (migration `0010`): `bitabar_app` has **no direct DML** on `user_roles`. Both methods call
+  the SECURITY DEFINER functions `app.assign_user_role` / `app.revoke_user_role`; the database
+  derives tenant/scope, validates the role, locks the live user and revokes sessions atomically.
+  Direct INSERT/UPDATE/DELETE/TRUNCATE is `42501`.
 
 ## Sensitive actions
 

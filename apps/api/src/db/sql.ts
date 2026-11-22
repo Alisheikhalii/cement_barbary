@@ -5,4 +5,4 @@
  * through TenantDb.run(). The lint rule keeps banning direct 'drizzle-orm'
  * imports outside src/db/**; modules import from here instead.
  */
-export { and, eq, gt, isNull, ne } from 'drizzle-orm';
+export { and, eq, gt, isNull, ne, sql } from 'drizzle-orm';

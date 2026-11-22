@@ -69,8 +69,11 @@ Tenant-owned (template above): `users`, `user_roles`, `user_credentials`,
 Special write rules:
 
 - `users` is **soft-delete only** (ADR-006 U13): DELETE is revoked from
-  `bitabar_app`; the app sets `deleted_at`. `user_roles` keeps DELETE (role
-  revocation).
+  `bitabar_app`; the app sets `deleted_at`.
+- `user_roles` is **read-only** for `bitabar_app` (SR-05, migration `0010`):
+  INSERT/UPDATE/DELETE/TRUNCATE are revoked. Assign/revoke go through the two
+  SECURITY DEFINER functions below, which derive tenant/scope from the server
+  context and the `roles` catalog.
 - `user_credentials` is **update-only**: credentials follow the user's
   soft-delete and are never hard-deleted; DELETE revoked (`0006_auth_rls`).
 - `auth_sessions` is **soft-revoke only** (ADR-007 A9): sessions die via
@@ -80,11 +83,52 @@ Special write rules:
 Any new table must either carry `tenant_id` + this template or be added to the
 allowlist above with a reason — otherwise the guard test fails.
 
-## The single RLS crossing: auth lookup functions (ADR-007 A17)
+## SR-05 user-role writes (migration 0010)
+
+`user_roles` has no direct DML grant for `bitabar_app`. Two functions are the
+only write path:
+
+- `app.assign_user_role(p_user_id uuid, p_role_code text) returns boolean`
+- `app.revoke_user_role(p_user_id uuid, p_role_code text) returns boolean`
+
+They are `SECURITY DEFINER`, owned by the migration owner, pinned to
+`search_path = pg_catalog, pg_temp`, schema-qualify every table, use static SQL,
+and are revoked from PUBLIC / granted only to `bitabar_app`. The tenant is
+**only** `app.current_tenant_id()`; the role scope is read from `public.roles`;
+the live user row is locked `FOR UPDATE` in that tenant; platform/removed roles
+and soft-deleted/other-tenant users are rejected. Live sessions are revoked in
+the same transaction, and only when a link was actually inserted/removed.
+`test/authz-sr05.int.test.ts` and the RLS/privilege tests lock this in. The
+REVOKE requires `DATABASE_MIGRATION_URL` to be the `user_roles` owner/grantor,
+exactly like the existing custom migrations. `0010` now fails closed: immediately
+after the REVOKE it checks `has_table_privilege('bitabar_app', …)` for all four
+write privileges and raises `42501` (`SR05_REVOKE_INCOMPLETE`) if any survived,
+so a non-owner run cannot leave the invariant silently absent.
+
+### Rollback text (documentation only — `0011` is NOT shipped)
+
+If SR-05 must be rolled back after deployment, ship a **new** forward
+migration with this text (never edit `0010`), then revert the repository
+commit:
+
+```sql
+REVOKE EXECUTE ON FUNCTION app.assign_user_role(uuid, text) FROM bitabar_app;
+REVOKE EXECUTE ON FUNCTION app.revoke_user_role(uuid, text) FROM bitabar_app;
+DROP FUNCTION app.assign_user_role(uuid, text);
+DROP FUNCTION app.revoke_user_role(uuid, text);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_roles TO bitabar_app;
+```
+
+No table/column/data change is needed; existing role links and session rows are
+preserved. Sessions revoked by SR-05 remain revoked (safe direction). If the
+code is reverted without this migration, role writes fail closed (`42501`).
+
+## The read crossing: auth lookup functions (ADR-007 A17)
 
 Pre-auth login has no tenant context, so the SECURITY DEFINER functions in
 migration `0007_auth_lookup_functions` are the **only** way to read across RLS
-without a context: `app.list_tenants()`, `app.auth_lookup_username(...)`,
+without a context. The write-side crossing is the SR-05 pair above; the same
+hardening checklist applies to both. `app.list_tenants()`, `app.auth_lookup_username(...)`,
 `app.auth_lookup_phone(pairs jsonb)` and — added for the opaque-refresh design
 of A8, flagged to the owner at the T03+T04 checkpoint —
 `app.auth_lookup_session(refresh_hash hex)`, which resolves the refresh cookie
