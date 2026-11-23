@@ -15,14 +15,14 @@ describe('migrations (integration)', () => {
     const journal = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(journal.rows[0]?.n).toBe(13);
+    expect(journal.rows[0]?.n).toBe(15);
 
     // Second run: no error, no new journal rows.
     await expect(runMigrations(inject('ownerUrl'))).resolves.toBeUndefined();
     const again = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(again.rows[0]?.n).toBe(13);
+    expect(again.rows[0]?.n).toBe(15);
   });
 
   it('bitabar_app has no superuser, bypass-rls, create-role or login-via-git privileges', async () => {
@@ -50,13 +50,14 @@ describe('migrations (integration)', () => {
   it('tenant-owned tables have row-level security enabled (auth and audit tables included)', async () => {
     const result = await ownerPool().query<{ relname: string; relrowsecurity: boolean }>(
       `SELECT relname, relrowsecurity FROM pg_class
-       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials,audit_logs}')
+       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials,audit_logs,idempotency_keys}')
          AND relnamespace = 'public'::regnamespace
        ORDER BY relname`,
     );
     expect(result.rows).toEqual([
       { relname: 'audit_logs', relrowsecurity: true },
       { relname: 'auth_sessions', relrowsecurity: true },
+      { relname: 'idempotency_keys', relrowsecurity: true },
       { relname: 'tenants', relrowsecurity: true },
       { relname: 'user_credentials', relrowsecurity: true },
       { relname: 'user_roles', relrowsecurity: true },
@@ -130,7 +131,10 @@ describe('migrations (integration)', () => {
          ('auth_sessions', 'SELECT'), ('auth_sessions', 'INSERT'), ('auth_sessions', 'UPDATE'), ('auth_sessions', 'DELETE'),
          ('auth_rate_limits', 'SELECT'), ('auth_rate_limits', 'INSERT'), ('auth_rate_limits', 'UPDATE'), ('auth_rate_limits', 'DELETE'),
          ('audit_logs', 'SELECT'), ('audit_logs', 'INSERT'), ('audit_logs', 'UPDATE'),
-         ('audit_logs', 'DELETE'), ('audit_logs', 'TRUNCATE')
+         ('audit_logs', 'DELETE'), ('audit_logs', 'TRUNCATE'),
+         ('idempotency_keys', 'SELECT'), ('idempotency_keys', 'INSERT'),
+         ('idempotency_keys', 'UPDATE'), ('idempotency_keys', 'DELETE'),
+         ('idempotency_keys', 'TRUNCATE')
        ) AS checks(t, p)
        ORDER BY t, p`,
     );
@@ -141,6 +145,8 @@ describe('migrations (integration)', () => {
       { t: 'audit_logs', p: 'SELECT', allowed: true },
       { t: 'audit_logs', p: 'TRUNCATE', allowed: false },
       { t: 'audit_logs', p: 'UPDATE', allowed: false },
+      // Idempotency (ADR-010 L11): DELETE exists solely for the expired-row
+      // sweep and is narrowed by the RESTRICTIVE policy; TRUNCATE never.
       { t: 'auth_rate_limits', p: 'DELETE', allowed: true }, // TTL sweep deletes expired counters
       { t: 'auth_rate_limits', p: 'INSERT', allowed: true },
       { t: 'auth_rate_limits', p: 'SELECT', allowed: true },
@@ -149,6 +155,11 @@ describe('migrations (integration)', () => {
       { t: 'auth_sessions', p: 'INSERT', allowed: true },
       { t: 'auth_sessions', p: 'SELECT', allowed: true },
       { t: 'auth_sessions', p: 'UPDATE', allowed: true },
+      { t: 'idempotency_keys', p: 'DELETE', allowed: true },
+      { t: 'idempotency_keys', p: 'INSERT', allowed: true },
+      { t: 'idempotency_keys', p: 'SELECT', allowed: true },
+      { t: 'idempotency_keys', p: 'TRUNCATE', allowed: false },
+      { t: 'idempotency_keys', p: 'UPDATE', allowed: true },
       { t: 'roles', p: 'DELETE', allowed: false },
       { t: 'roles', p: 'INSERT', allowed: false },
       { t: 'roles', p: 'SELECT', allowed: true },

@@ -107,14 +107,34 @@ delay/lockout episode is reconstructable from the log plus that field.
 ## Idempotency — caller contract
 
 - Any POST/PUT/PATCH/DELETE route under `@RequirePermission` **must** carry `@Idempotent()`; startup and the
-  route-scan test reject a missing marker (opt-out allowlist empty).
-- The client sends `Idempotency-Key: ^[A-Za-z0-9_-]{16,128}$`; missing/malformed → `400`.
-- Same key + same payload → replay (`Idempotent-Replayed: true`); same key + different payload → `422
-IDEMPOTENCY_KEY_REUSED`; concurrent duplicate → `409` + `Retry-After` after the lock wait; handler timeout →
-  `503`, no key stored, retry executes.
-- Scope is tenant + user + method + route template; a key is single-use per route and expires after 24 h.
-- The response stored for replay is encrypted; never put a token, password or cookie in a response body that a
-  mutating route can replay.
+  route-scan test reject a missing marker (opt-out allowlist empty; the marker on a GET is rejected too).
+- The client sends `Idempotency-Key: ^[A-Za-z0-9_-]{16,128}$`; missing/malformed → `400
+IDEMPOTENCY_KEY_REQUIRED`. The key is opaque, never logged — the pino access log redacts
+  `req.headers["idempotency-key"]` and the structural redactor treats `idempotency-key`/`idempotency_key` as a
+  secret key (T07 review HIGH).
+- Same key + same payload → replay (`Idempotent-Replayed: true`, stored status and body only); same key +
+  different payload → `422 IDEMPOTENCY_KEY_REUSED`; a concurrent duplicate waits on the unique key and, when the
+  lock wait expires (SQLSTATE 55P03), gets `409 IDEMPOTENCY_IN_PROGRESS` with `Retry-After: 1` — never a 500.
+- **Only successful responses are stored (owner CP4).** Any thrown error — including a business 4xx — rolls back
+  the claim and the handler's writes; a retry with the same key re-executes. Do not design a route that depends
+  on a cached failure.
+- **Handler contract (owner CP4).** A marked handler may only cause effects **inside the request transaction**:
+  an outbox enqueue in the same transaction is the pattern; a direct SMS/HTTP/payment call is a review defect,
+  because the 8000 ms cap aborts the transaction but cannot cancel JS work. The same cap is applied as `SET
+LOCAL statement_timeout`, so the database side stops; a DB-bound handler that overruns answers `503
+IDEMPOTENCY_TIMEOUT` and stores no key.
+- **Fingerprint surface (owner CP4).** SHA-256 over canonical `{params, query, body}` only — sorted keys, array
+  order kept, missing body ≡ `null`. The route is in `METHOD + route template`, the principal (tenant + user) is
+  in the scope key, and **no header** is included (`Idempotency-Key` and `Authorization` included). One intent on
+  another route or by another principal is a separate row; a rotated token still replays.
+- Scope is tenant + user + method + route template; a key is single-use per route and expires after 24 h. An
+  expired row is taken over by a CAS update: two racing duplicates still produce exactly one handler execution
+  and one row (the loser replays or gets 409).
+- The response stored for replay is encrypted (AAD `tenant:idempotency_keys.response_enc:<rowId>`) and capped at
+  64 KiB; over the cap is a generic 500 with a code-only log and no stored body. Never put a token, password or
+  cookie in a replayable response body.
+- **Replay writes no audit row.** The original request's row describes the one side effect. The interceptor
+  flags a replay, so `SensitiveAuditInterceptor` skips its success row when both features meet on one route.
 
 ## Outbox — adapter contract
 

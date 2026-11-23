@@ -71,6 +71,11 @@ function isPiiKey(key: string): boolean {
     k.includes('authorization') ||
     k.includes('cookie') ||
     k.includes('credential') ||
+    // The idempotency key is an opaque replay credential (ADR-010 L9): a
+    // logged key would let a reader replay another principal's stored
+    // response. Structured fields (e.g. `idempotencyReplay`) stay visible.
+    k === 'idempotency-key' ||
+    k === 'idempotency_key' ||
     // Free-text sensitive-action reason (ADR-008 Z10): never pino-logged.
     // Any key containing `reason` is covered (`denialReason`, `reasonText`,
     // `reason_text`, `x-reason`, `x-reason-text`); operation code variants are

@@ -86,6 +86,7 @@ function route(overrides: Partial<ScannedRoute> = {}): ScannedRoute {
     isPublic: false,
     isSelfService: false,
     isPermission: true,
+    isIdempotent: true,
     classLevelMarker: false,
     permission: TENANT_PERMISSION,
     bodySchema: null,
@@ -293,7 +294,7 @@ class MassAssignmentNonStrictProbeModule {}
 class MassAssignmentGoodProbeController {
   @HttpCode(200)
   @RequirePermission('destination.read')
-  @Post('echo')
+  @Get('echo')
   echo(
     @ZodBody(z.strictObject({ displayName: z.string().min(1) })) body: { displayName: string },
   ): { displayName: string } {
@@ -379,7 +380,7 @@ afterAll(async () => {
 describe('mass-assignment — HTTP strict-body rejection', { timeout: 30000 }, () => {
   it('accepts a body with only the reviewed fields', async () => {
     const response = await request(app.getHttpServer())
-      .post('/mass-assignment-good-probe/echo')
+      .get('/mass-assignment-good-probe/echo')
       .set({ authorization: `Bearer ${accessToken}` })
       .send({ displayName: 'Barbary' })
       .expect(200);
@@ -389,7 +390,7 @@ describe('mass-assignment — HTTP strict-body rejection', { timeout: 30000 }, (
   it('rejects a body that adds tenantId or role (strict pipe)', async () => {
     for (const extra of [{ tenantId: TENANT_ID }, { role: 'FACTORY_OPERATOR' }]) {
       const response = await request(app.getHttpServer())
-        .post('/mass-assignment-good-probe/echo')
+        .get('/mass-assignment-good-probe/echo')
         .set({ authorization: `Bearer ${accessToken}` })
         .send({ displayName: 'Barbary', ...extra });
       expect(response.status, JSON.stringify(extra)).toBe(400);

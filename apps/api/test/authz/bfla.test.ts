@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { randomBytes } from 'node:crypto';
 
-import { Controller, HttpCode, Module, Post, type INestApplication } from '@nestjs/common';
+import { Controller, Get, HttpCode, Module, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { API_PREFIX } from '@bitabar/shared';
 import request from 'supertest';
@@ -86,7 +86,7 @@ const SENSITIVE_BODY = z.strictObject({ reason: sensitiveReasonSchema });
 class BflaProbeController {
   @HttpCode(200)
   @RequirePermission('destination.read')
-  @Post('destination-read')
+  @Get('destination-read')
   destinationRead(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -94,7 +94,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('destination.write')
-  @Post('destination-write')
+  @Get('destination-write')
   destinationWrite(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -102,7 +102,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('hall.read')
-  @Post('hall-read')
+  @Get('hall-read')
   hallRead(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -110,7 +110,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('hall.write')
-  @Post('hall-write')
+  @Get('hall-write')
   hallWrite(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -118,7 +118,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('loader_type.read')
-  @Post('loader_type-read')
+  @Get('loader_type-read')
   loaderTypeRead(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -126,7 +126,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('loader_type.write')
-  @Post('loader_type-write')
+  @Get('loader_type-write')
   loaderTypeWrite(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -134,7 +134,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('carrier.read')
-  @Post('carrier-read')
+  @Get('carrier-read')
   carrierRead(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -142,7 +142,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('carrier.write')
-  @Post('carrier-write')
+  @Get('carrier-write')
   carrierWrite(@ZodBody(EMPTY_BODY) body: Record<string, never>): { ok: true } {
     void body;
     return { ok: true };
@@ -150,7 +150,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('carrier_membership.write')
-  @Post('carrier_membership-write')
+  @Get('carrier_membership-write')
   carrierMembershipWrite(@ZodBody(SENSITIVE_BODY) body: { reason: string }): { ok: true } {
     void body;
     return { ok: true };
@@ -158,7 +158,7 @@ class BflaProbeController {
 
   @HttpCode(200)
   @RequirePermission('carrier_quota.write')
-  @Post('carrier_quota-write')
+  @Get('carrier_quota-write')
   carrierQuotaWrite(@ZodBody(SENSITIVE_BODY) body: { reason: string }): { ok: true } {
     void body;
     return { ok: true };
@@ -221,7 +221,7 @@ async function postProbe(
   probe: ProbeRoute,
   token?: string,
 ): Promise<{ readonly status: number; readonly body: unknown }> {
-  let call = request(app.getHttpServer()).post(`/bfla-probe/${probe.segment}`);
+  let call = request(app.getHttpServer()).get(`/bfla-probe/${probe.segment}`);
   if (token !== undefined) {
     call = call.set(bearer(token));
   }

@@ -5,6 +5,7 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter.js';
+import { IdempotencyModule } from './common/idempotency/idempotency.module.js';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './db/database.module.js';
@@ -29,7 +30,15 @@ import { AuthzModule } from './security/authz/authz.module.js';
         redact: {
           // `reason` is also handled structurally by redactPiiLogObject; these
           // paths cover child-logger bindings, which bypass formatters.log.
-          paths: ['req.headers.authorization', 'req.headers.cookie', 'reason', '*.reason'],
+          // The idempotency key is an opaque replay credential (ADR-010 L9):
+          // it must never reach an access log (F1-06 T07 review HIGH).
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.headers["idempotency-key"]',
+            'reason',
+            '*.reason',
+          ],
           censor: '[redacted]',
         },
         formatters: { log: redactPiiLogObject },
@@ -42,6 +51,9 @@ import { AuthzModule } from './security/authz/authz.module.js';
     // Must stay AFTER AuthModule: AuthGuard answers 401 before AuthorizationGuard
     // decides 403 (ADR-008 Z4). The order is locked by a test.
     AuthzModule,
+    // AFTER AuthzModule: its transaction is outer to (or flagged through) the
+    // sensitive audit so a failed handler still gets its best-effort row.
+    IdempotencyModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

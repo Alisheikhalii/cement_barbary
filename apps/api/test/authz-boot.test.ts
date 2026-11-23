@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { randomBytes } from 'node:crypto';
 
-import { Controller, Get, Module, Post, type INestApplication, type Type } from '@nestjs/common';
+import { Controller, Get, Module, type INestApplication, type Type } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -79,7 +79,7 @@ class ExtraSelfServiceController {
 @Controller('boot-sensitive')
 class BadSensitiveController {
   @RequirePermission(SENSITIVE_PERMISSION)
-  @Post()
+  @Get()
   write(@ZodBody(z.strictObject({ reason: z.string() })) body: { reason: string }): {
     reason: string;
   } {

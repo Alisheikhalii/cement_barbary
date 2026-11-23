@@ -53,6 +53,32 @@ export class DomainError extends Error {
     });
   }
 
+  /** Missing/malformed `Idempotency-Key` on a marked route (ADR-010 L9) — 400. */
+  static idempotencyKeyRequired(): DomainError {
+    return new DomainError('IDEMPOTENCY_KEY_REQUIRED', 'کلید تکرار درخواست نامعتبر است', 400);
+  }
+
+  /** Same key, different params/query/body (ADR-010 L9) — 422. Never discloses the original. */
+  static idempotencyKeyReused(): DomainError {
+    return new DomainError(
+      'IDEMPOTENCY_KEY_REUSED',
+      'این کلید قبلاً برای درخواست دیگری استفاده شده است',
+      422,
+    );
+  }
+
+  /** The same key is still running in another transaction — 409 + Retry-After: 1. */
+  static idempotencyInProgress(): DomainError {
+    return new DomainError('IDEMPOTENCY_IN_PROGRESS', 'درخواست مشابه در حال پردازش است', 409, {
+      retryAfterSeconds: 1,
+    });
+  }
+
+  /** The handler exceeded the cap; the claim and its rows rolled back — 503. */
+  static idempotencyTimeout(): DomainError {
+    return new DomainError('IDEMPOTENCY_TIMEOUT', 'پردازش درخواست بیش از حد طول کشید', 503);
+  }
+
   /**
    * A resource is absent OR outside the caller's access scope — always the
    * same generic 404 (ADR-008 Z8, F1-05 T05). The message is identical to the

@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { randomBytes } from 'node:crypto';
 
-import { Controller, Module, Post, type INestApplication } from '@nestjs/common';
+import { Controller, Get, Module, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { PinoLogger } from 'nestjs-pino';
 import request from 'supertest';
@@ -64,7 +64,7 @@ const freshness = {
 @Controller('authz-audit-probe')
 class AuthzAuditProbeController {
   @RequirePermission(ACTION)
-  @Post('success')
+  @Get('success')
   success(@ZodBody(z.strictObject({ reason: sensitiveReasonSchema })) body: { reason: string }): {
     length: number;
   } {
@@ -73,7 +73,7 @@ class AuthzAuditProbeController {
   }
 
   @RequirePermission(ACTION)
-  @Post('failure')
+  @Get('failure')
   failure(
     @ZodBody(z.strictObject({ reason: sensitiveReasonSchema })) body: { reason: string },
   ): never {
@@ -83,7 +83,7 @@ class AuthzAuditProbeController {
   }
 
   @RequirePermission('destination.read')
-  @Post('non-sensitive')
+  @Get('non-sensitive')
   nonSensitive(): { ok: true } {
     order.push('handler');
     return { ok: true };
@@ -170,10 +170,10 @@ afterAll(async () => {
 describe('sensitive audit hook', () => {
   it('records success after the handler with the validated, trimmed reason', async () => {
     const response = await request(app.getHttpServer())
-      .post('/authz-audit-probe/success')
+      .get('/authz-audit-probe/success')
       .set(bearer(operatorToken))
       .send({ reason: `  ${REASON}  ` })
-      .expect(201);
+      .expect(200);
 
     expect(response.body.data).toEqual({ length: REASON.length });
     expect(order).toEqual(['handler', 'audit']);
@@ -187,8 +187,8 @@ describe('sensitive audit hook', () => {
       },
       reason: REASON,
       outcome: 'success',
-      // POST default, derived before Nest applies it (F1-06 L6).
-      httpStatus: 201,
+      // GET default, derived before Nest applies it (F1-06 L6).
+      httpStatus: 200,
     });
     expect(records[0]?.requestId).toEqual(expect.any(String));
     expect(records[0]?.ip).toMatch(/127\.0\.0\.1|::1/);
@@ -196,7 +196,7 @@ describe('sensitive audit hook', () => {
 
   it('records failure after the handler and rethrows the original error', async () => {
     const response = await request(app.getHttpServer())
-      .post('/authz-audit-probe/failure')
+      .get('/authz-audit-probe/failure')
       .set(bearer(operatorToken))
       .send({ reason: REASON })
       .expect(500);
@@ -216,7 +216,7 @@ describe('sensitive audit hook', () => {
 
   it('records failure with a null reason when the body never validated', async () => {
     await request(app.getHttpServer())
-      .post('/authz-audit-probe/success')
+      .get('/authz-audit-probe/success')
       .set(bearer(operatorToken))
       .send({ reason: 'too-short' })
       .expect(400);
@@ -234,7 +234,7 @@ describe('sensitive audit hook', () => {
 
   it('records a denied row when a guard denies a sensitive permission (L6)', async () => {
     const response = await request(app.getHttpServer())
-      .post('/authz-audit-probe/success')
+      .get('/authz-audit-probe/success')
       .set(bearer(carrierToken))
       .send({ reason: SECRET_REASON })
       .expect(403);
@@ -264,7 +264,7 @@ describe('sensitive audit hook', () => {
   it('fails the request when the success audit write fails (fail-closed, ADR-009 L1)', async () => {
     failSuccessWrite = true;
     const response = await request(app.getHttpServer())
-      .post('/authz-audit-probe/success')
+      .get('/authz-audit-probe/success')
       .set(bearer(operatorToken))
       .send({ reason: REASON })
       .expect(500);
@@ -293,7 +293,7 @@ describe('sensitive audit hook', () => {
     const failingApp = await buildAuditApp({}, undefined, failingHook);
     try {
       const response = await request(failingApp.getHttpServer())
-        .post('/authz-audit-probe/success')
+        .get('/authz-audit-probe/success')
         .set(bearer(carrierToken))
         .send({ reason: SECRET_REASON })
         .expect(403);
@@ -317,7 +317,7 @@ describe('sensitive audit hook', () => {
 
   it('does not record anything for an anonymous request', async () => {
     await request(app.getHttpServer())
-      .post('/authz-audit-probe/success')
+      .get('/authz-audit-probe/success')
       .send({ reason: REASON })
       .expect(401);
     expect(records).toHaveLength(0);
@@ -326,9 +326,9 @@ describe('sensitive audit hook', () => {
 
   it('never invokes the hook for a non-sensitive permission route', async () => {
     await request(app.getHttpServer())
-      .post('/authz-audit-probe/non-sensitive')
+      .get('/authz-audit-probe/non-sensitive')
       .set(bearer(operatorToken))
-      .expect(201);
+      .expect(200);
     expect(records).toHaveLength(0);
     expect(order).toEqual(['handler']);
   });

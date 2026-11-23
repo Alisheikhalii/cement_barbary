@@ -64,7 +64,7 @@ Global tables (no `tenant_id`, each with a written reason — ADR-006 U14):
   account-dimension key (T07, recorded in the T05 report).
 
 Tenant-owned (template above): `users`, `user_roles`, `user_credentials`,
-`auth_sessions`, `audit_logs`.
+`auth_sessions`, `audit_logs`, `idempotency_keys`.
 
 `audit_logs` is **append-only** (ADR-009 L3, migrations `0011`/`0012`):
 `bitabar_app` has `SELECT, INSERT` only; `UPDATE/DELETE/TRUNCATE/TRIGGER/
@@ -73,11 +73,18 @@ REFERENCES` are revoked, and BEFORE triggers reject UPDATE/DELETE/TRUNCATE for
 `occurred_at = clock_timestamp()` on INSERT. The migration fails closed if a
 privilege or trigger is missing.
 
-Planned tenant-owned tables (F1-06, `docs/plan/F1-06.md`; active only from their
-migrations): `idempotency_keys` (DELETE only for expired rows via a RESTRICTIVE
-policy, ADR-010 L11) and `integration_outbox` (no DELETE/TRUNCATE for the
-runtime role, ADR-010 L13). The U14 guard covers them automatically because each
-carries `tenant_id` + the template; the definer catalog stays at 6.
+`idempotency_keys` (`0013`/`0014`, ADR-010 L8/L9/L11) uses the template plus a
+**RESTRICTIVE** `FOR DELETE USING (expires_at < now())` policy: the runtime role
+may delete only expired keys (the sweep), never a live claim or a stored
+response; `TRUNCATE` is revoked. `0014` fails closed (`42501
+IDEMPOTENCY_RLS_INVALID` / `IDEMPOTENCY_POLICY_INVALID` /
+`IDEMPOTENCY_GRANTS_INVALID`) when the RLS flag, the two policies or the
+privilege set did not stick.
+
+Planned tenant-owned table (F1-06, `docs/plan/F1-06.md`; active only from its
+migration): `integration_outbox` (no DELETE/TRUNCATE for the runtime role,
+ADR-010 L13). The U14 guard covers it automatically because it carries
+`tenant_id` + the template; the definer catalog stays at 6.
 
 Special write rules:
 

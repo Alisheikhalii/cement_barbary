@@ -22,23 +22,40 @@ the **Postgres poller** over Redis/BullMQ for the worker (Q3).
   - **Concurrent duplicate:** the second request blocks on the unique key. If the first commits, the second sees
     `completed` and **replays**; if the lock wait exceeds `IDEMPOTENCY_LOCK_TIMEOUT_MS` (default 2000), it answers
     `409 IDEMPOTENCY_IN_PROGRESS` with `Retry-After: 1`.
-  - **Handler cap (owner C1):** `IDEMPOTENCY_HANDLER_TIMEOUT_MS` (default **8000**, bounds 1000–30000) bounds how
-    long a handler may hold the claim and its rows. A timeout aborts the transaction, so **the key is not stored**
-    and a retry with the same key executes again; the client gets a generic `503 IDEMPOTENCY_TIMEOUT`. The default
-    is above the DB statement timeout (5000 ms) so an ordinary slow query surfaces as its own error first.
+  - **Handler cap (owner C1; amended at CP4):** `IDEMPOTENCY_HANDLER_TIMEOUT_MS` (default **8000**, bounds
+    1000–30000) bounds how long a handler may hold the claim and its rows. A timeout aborts the transaction, so
+    **the key is not stored** and a retry with the same key executes again; the client gets a generic `503
+IDEMPOTENCY_TIMEOUT`. `Promise.race` does **not** cancel the handler, so the same value is applied as `SET
+LOCAL statement_timeout`, which stops the database side; JS work that already left the process cannot be
+    stopped. **Rule (owner CP4 change 1):** a `@Idempotent()` handler may only cause effects inside the request
+    transaction — an outbox enqueue in the same transaction is the pattern; a direct SMS/HTTP/payment call is a
+    review defect. The default is above the DB statement timeout (5000 ms) so an ordinary slow query surfaces as
+    its own error first, unless the route's cap is configured lower.
+  - **Lock contention (owner CP4 change 3):** when the duplicate's wait on the unique key exceeds
+    `IDEMPOTENCY_LOCK_TIMEOUT_MS` (default 2000), PostgreSQL raises SQLSTATE `55P03`; the interceptor translates
+    it to `409 IDEMPOTENCY_IN_PROGRESS` with `Retry-After: 1` — never a 500. A DB statement killed by the aligned
+    `statement_timeout` (`57014`) maps to the same `503` as the JS cap.
 - **L9 — Key semantics.**
   - Header `Idempotency-Key`, `^[A-Za-z0-9_-]{16,128}$`; missing or malformed on a marked route → `400
 IDEMPOTENCY_KEY_REQUIRED`. The key is opaque and never logged.
   - Scope is `(tenant_id, user_id, route_key, idem_key)`, where `route_key = METHOD + " " + route template`
     (e.g. `POST /api/v1/base/destinations`) — **not** the raw URL, so a query string cannot split a scope.
   - Fingerprint = SHA-256 of a canonical JSON of `{params, query, body}` (recursively sorted keys, array order
-    kept, `undefined` omitted). Stored as `bytea(32)`.
+    kept, `undefined` omitted). Stored as `bytea(32)`. **Exactly these three surfaces (owner CP4 change 4):** the
+    route and the principal are dimensions of the scope key, and **no header** — including `Idempotency-Key` and
+    `Authorization` — is part of it, so a replay with a rotated token still matches and transport metadata can
+    never turn one intent into two.
   - Same key + same fingerprint + `completed` → **replay**: stored status and JSON body, plus
     `Idempotent-Replayed: true`. Headers are not replayed (only status + body).
   - Same key + different fingerprint → `422 IDEMPOTENCY_KEY_REUSED`, generic body (no diff, nothing about the
     original payload).
+  - **Only successful responses are stored (owner CP4 change 5).** Any thrown error — a business 4xx included —
+    rolls the transaction back: no row, no stored body, and a retry with the same key re-executes. This is the
+    documented contract, not an accident: a 4xx is a decision about one attempt, not a result to cache for 24 h.
   - Expired row (`expires_at < now()`, 24 h from `IDEMPOTENCY_TTL_HOURS`, DB clock) → a CAS `UPDATE … WHERE
-expires_at < now()` takes it over and the handler runs as a new request.
+expires_at < now()` takes it over and the handler runs as a new request. When two duplicates race the takeover,
+    only one CAS can match (the other waits, sees the moved `expires_at`, and replays or answers 409), so exactly
+    one handler executes and the table keeps one row (owner CP4 change 2; test proves it).
   - Tenant, user and route key always come from the server (principal + route metadata), never from the request.
 - **L10 — Coverage.** Every production `@RequirePermission` route with POST/PUT/PATCH/DELETE must carry
   `@Idempotent()`; the opt-out allowlist is **empty**. The boot check and the route-scan test enforce it (a new

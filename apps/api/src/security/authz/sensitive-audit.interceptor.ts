@@ -11,6 +11,7 @@ import type { Request } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 import { from, lastValueFrom, type Observable } from 'rxjs';
 
+import { deriveSuccessStatus } from '../../common/http/success-status.js';
 import { runWithAuditChanges } from '../../modules/audit/audit-context.js';
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import required: emitDecoratorMetadata emits TenantContext as the constructor param type for DI
 import { TenantContext } from '../../db/tenant-context.js';
@@ -23,6 +24,13 @@ import { isSensitivePermission } from './permissions.js';
 
 interface AuditedRequest extends Request {
   body: unknown;
+  /**
+   * Set by the idempotency interceptor when a stored response is replayed
+   * (ADR-010 L11): a replay is not a second mutation, so it must not write a
+   * second success audit row. Harmless when the idempotency interceptor is not
+   * active or is outer to this one (then this code never sees a replay).
+   */
+  idempotencyReplay?: boolean;
 }
 
 interface SafeParseSchema {
@@ -105,10 +113,15 @@ export class SensitiveAuditInterceptor implements NestInterceptor {
       return await this.tenantContext.run(scope, () =>
         this.tenantDb.run(async () => {
           const { result, changes } = await runWithAuditChanges(() => lastValueFrom(next.handle()));
+          if (request.idempotencyReplay === true) {
+            // The idempotency interceptor answered from its stored row and the
+            // handler never ran; the original request already wrote the row.
+            return result;
+          }
           const record: AuditRecord = {
             ...base,
             outcome: 'success',
-            httpStatus: successStatus(context),
+            httpStatus: deriveSuccessStatus(context),
             ...(changes.length > 0 ? { changes } : {}),
           };
           // Same transaction as the handler: if this insert fails, the change
@@ -151,25 +164,10 @@ export class SensitiveAuditInterceptor implements NestInterceptor {
 }
 
 /**
- * The status Nest will actually send (F1-06 L6). At interceptor time Nest has
- * not applied `@HttpCode`/the POST default yet, so those are derived the same
- * way the Express adapter does; a handler that used `@Res()` already sent
- * headers and its own status wins.
+ * The status Nest will actually send is derived by `deriveSuccessStatus`
+ * (common/http), shared with the idempotency interceptor so a stored replay
+ * carries the same status as the original.
  */
-function successStatus(context: ExecutionContext): number {
-  const response = context
-    .switchToHttp()
-    .getResponse<{ readonly headersSent?: boolean; readonly statusCode?: number }>();
-  if (response.headersSent === true && typeof response.statusCode === 'number') {
-    return response.statusCode;
-  }
-  const explicit: unknown = Reflect.getMetadata('__httpCode__', context.getHandler());
-  if (typeof explicit === 'number') {
-    return explicit;
-  }
-  const method = context.switchToHttp().getRequest<{ method?: string }>().method;
-  return method === 'POST' ? 201 : 200;
-}
 
 function failureStatus(error: unknown): number {
   if (typeof error === 'object' && error !== null) {

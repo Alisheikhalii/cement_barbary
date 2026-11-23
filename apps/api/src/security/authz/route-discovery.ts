@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 
+import { IDEMPOTENT_KEY } from '../../common/idempotency/idempotency.constants.js';
 import {
   BODY_SCHEMA_KEY,
   hasClassLevelAccessMarker,
@@ -83,6 +84,7 @@ export function collectRoutesFromSources(
       const isSelfService = Reflect.getMetadata(IS_SELF_SERVICE_KEY, handler) === true;
       const permissionMetadata: unknown = Reflect.getMetadata(REQUIRE_PERMISSION_KEY, handler);
       const isPermission = permissionMetadata !== undefined;
+      const isIdempotent = Reflect.getMetadata(IDEMPOTENT_KEY, handler) === true;
       const bodySchema: unknown = Reflect.getMetadata(BODY_SCHEMA_KEY, handler);
       const querySchema: unknown = Reflect.getMetadata(QUERY_SCHEMA_KEY, handler);
       const paramsSchema: unknown = Reflect.getMetadata(PARAMS_SCHEMA_KEY, handler);
@@ -101,6 +103,7 @@ export function collectRoutesFromSources(
             isPublic,
             isSelfService,
             isPermission,
+            isIdempotent,
             classLevelMarker,
             permission: typeof permissionMetadata === 'string' ? permissionMetadata : null,
             bodySchema: bodySchema ?? null,

@@ -1,5 +1,6 @@
 import { API_PREFIX } from '@bitabar/shared';
 
+import { IDEMPOTENT_METHODS } from '../../common/idempotency/idempotency.constants.js';
 import { scanInputSchema } from './input-scan.js';
 import { isPermissionName, isSensitivePermission } from './permissions.js';
 import { FORBIDDEN_REASON_RANGES } from './sensitive-reason.js';
@@ -48,6 +49,16 @@ export const PRODUCTION_CONTROLLERS = Object.freeze([
 ] as const);
 
 /**
+ * Idempotency coverage (ADR-010 L10, F1-06 T07): every mutating
+ * `@RequirePermission` route must carry `@Idempotent()`. The list is empty by
+ * design; a future exemption is a reviewed allowlist change, never an
+ * annotation someone forgot.
+ */
+export const IDEMPOTENT_OPT_OUT = Object.freeze(
+  [] as { readonly method: string; readonly path: string }[],
+);
+
+/**
  * A controller/module name that looks like a probe, fixture or test surface.
  * Case-sensitive CamelCase words, so `ContestModule`/`LatestModule` are not
  * false hits while `AuthTestModule` is.
@@ -63,6 +74,8 @@ export interface ScannedRoute {
   readonly isPublic: boolean;
   readonly isSelfService: boolean;
   readonly isPermission: boolean;
+  /** True when the handler carries `@Idempotent()` (ADR-010 L10). */
+  readonly isIdempotent: boolean;
   readonly classLevelMarker: boolean;
   /** Raw `@RequirePermission` metadata when present (a string in production). */
   readonly permission: string | null;
@@ -115,6 +128,12 @@ export function isAllowlistedSelfServiceRoute(
   environment: ScanEnvironment,
 ): boolean {
   return isAllowlisted(method, rawPath, environment, SELF_SERVICE_ROUTE_ALLOWLIST);
+}
+
+function isIdempotentOptedOut(route: ScannedRoute): boolean {
+  return IDEMPOTENT_OPT_OUT.some(
+    (entry) => entry.method === route.method && entry.path === route.path,
+  );
 }
 
 function isAllowlisted(
@@ -328,6 +347,31 @@ export function scanRoutes(
           });
         }
       }
+      const mutating = (IDEMPOTENT_METHODS as readonly string[]).includes(route.method);
+      if (mutating && !route.isIdempotent && !isIdempotentOptedOut(route)) {
+        issues.push({
+          code: 'AUTHZ_IDEMPOTENT_REQUIRED',
+          route: routeName,
+          detail: 'a mutating permission route must carry @Idempotent() (ADR-010 L10)',
+        });
+      }
+    }
+    // Outside the permission branch: `@Idempotent()` needs the guard-attached
+    // principal, so a public/self-service route carrying it is dead (403 at
+    // runtime) even though the marker-count rule may be satisfied.
+    if (route.isIdempotent && !(IDEMPOTENT_METHODS as readonly string[]).includes(route.method)) {
+      issues.push({
+        code: 'AUTHZ_IDEMPOTENT_NOT_APPLICABLE',
+        route: routeName,
+        detail: '@Idempotent() is only meaningful on POST/PUT/PATCH/DELETE',
+      });
+    }
+    if (route.isIdempotent && !route.isPermission) {
+      issues.push({
+        code: 'AUTHZ_IDEMPOTENT_WITHOUT_PRINCIPAL',
+        route: routeName,
+        detail: '@Idempotent() requires a @RequirePermission route (a principal)',
+      });
     }
     issues.push(...inputSchemaIssues(route, routeName));
     if (environment === 'production') {

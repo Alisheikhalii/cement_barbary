@@ -106,6 +106,8 @@ describe('redactPii — auth secrets (ADR-007 A14)', () => {
       cookieHeader: 'bitabar_refresh=…',
       credentials: { password: 'secret-3' },
       list: [{ passphrase: 'secret-4' }],
+      headers: { 'idempotency-key': 'key-secret-5', 'Idempotency-Key': 'key-secret-6' },
+      idempotencyReplay: true,
     };
     const out = redactPii(input);
     const text = JSON.stringify(out);
@@ -125,11 +127,15 @@ describe('redactPii — auth secrets (ADR-007 A14)', () => {
       '111111',
       'Bearer x',
       'bitabar_refresh=…',
+      'key-secret-5',
+      'key-secret-6',
     ]) {
       expect(text).not.toContain(value);
     }
     expect(out.password).toBe(PII_REDACTED);
     expect(out.code).toBe(PII_REDACTED);
+    // The boolean replay marker is operational, not a credential.
+    expect(out.idempotencyReplay).toBe(true);
   });
 
   it('keeps non-secret operational keys visible', () => {

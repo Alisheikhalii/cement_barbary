@@ -92,6 +92,20 @@
       "when": 1795374404313,
       "tag": "0012_audit_logs_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795418353083,
+      "tag": "0013_thankful_princess_powerful",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795418400000,
+      "tag": "0014_idempotency_rls",
+      "breakpoints": true
     }
   ]
 }

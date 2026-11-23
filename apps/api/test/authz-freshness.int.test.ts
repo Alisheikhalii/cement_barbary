@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { randomBytes } from 'node:crypto';
 
-import { Controller, Module, Post } from '@nestjs/common';
+import { Controller, Get, Module } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,7 +31,7 @@ import {
 @Controller('authz-freshness')
 class FreshnessProbeController {
   @RequirePermission('carrier_membership.write')
-  @Post('probe')
+  @Get('probe')
   probe(@ZodBody(z.strictObject({ reason: sensitiveReasonSchema })) body: { reason: string }): {
     ok: true;
     length: number;
@@ -147,7 +147,7 @@ async function accountWithRole(role: Role): Promise<Account> {
 
 function probe(accessToken: string): request.Test {
   return request(app.getHttpServer())
-    .post(SENSITIVE_ROUTE)
+    .get(SENSITIVE_ROUTE)
     .set('authorization', `Bearer ${accessToken}`)
     .send({ reason: REASON });
 }
@@ -164,7 +164,7 @@ describe('sensitive authorization — fresh state', () => {
   it('allows an active operator with a live session and denies a carrier', async () => {
     const operator = await accountWithRole('FACTORY_OPERATOR');
     const carrier = await accountWithRole('CARRIER_ADMIN');
-    await probe(operator.accessToken).expect(201);
+    await probe(operator.accessToken).expect(200);
     await probe(carrier.accessToken).expect(403);
   });
 

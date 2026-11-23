@@ -98,6 +98,17 @@ const envSchema = z
     AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(600),
     // A19: operator-set one-time password lifetime.
     AUTH_TEMP_PASSWORD_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+    // --- F1-06 T07 idempotency (ADR-010 L8/L9/L11) ---
+    // How long a duplicate claim waits on the unique key before 409. Must stay
+    // below the handler cap so the contended request answers before the owner
+    // finishes.
+    IDEMPOTENCY_LOCK_TIMEOUT_MS: z.coerce.number().int().min(100).max(10000).default(2000),
+    // Handler cap (owner C1): the transaction, its rows and the claim are
+    // aborted at this point. Also applied as SET LOCAL statement_timeout so the
+    // database side stops too (a handler cannot be cancelled from JS).
+    IDEMPOTENCY_HANDLER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(8000),
+    // Stored result lifetime (GUIDELINES §5.4: 24 h).
+    IDEMPOTENCY_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   })
   .superRefine((data, ctx) => {
     // Fields can be un-decoded when their own validation already failed.
@@ -128,6 +139,15 @@ const envSchema = z
         code: 'custom',
         path: ['AUTH_LOCK_BASE_SECONDS'],
         message: 'must not exceed AUTH_LOCK_MAX_SECONDS',
+      });
+    }
+    // A duplicate must answer 409 before the claim owner's cap fires, otherwise
+    // every contended retry would burn the whole handler window.
+    if (data.IDEMPOTENCY_LOCK_TIMEOUT_MS >= data.IDEMPOTENCY_HANDLER_TIMEOUT_MS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['IDEMPOTENCY_LOCK_TIMEOUT_MS'],
+        message: 'must be below IDEMPOTENCY_HANDLER_TIMEOUT_MS',
       });
     }
   });
@@ -178,6 +198,15 @@ export interface AppConfig {
     /** A19: one-time password lifetime. */
     tempPasswordTtlHours: number;
   };
+  /** F1-06 idempotency (ADR-010 L8/L9/L11). */
+  idempotency: {
+    /** Lock wait on the claim's unique key before 409 IDEMPOTENCY_IN_PROGRESS. */
+    lockTimeoutMs: number;
+    /** Handler cap; also the transaction's statement_timeout. */
+    handlerTimeoutMs: number;
+    /** Stored result lifetime. */
+    ttlHours: number;
+  };
 }
 
 export function parseEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -223,6 +252,11 @@ export function parseEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
       tokenSecret: parsed.data.AUTH_TOKEN_SECRET,
       accessTokenTtlSeconds: parsed.data.AUTH_ACCESS_TOKEN_TTL_SECONDS,
       tempPasswordTtlHours: parsed.data.AUTH_TEMP_PASSWORD_TTL_HOURS,
+    },
+    idempotency: {
+      lockTimeoutMs: parsed.data.IDEMPOTENCY_LOCK_TIMEOUT_MS,
+      handlerTimeoutMs: parsed.data.IDEMPOTENCY_HANDLER_TIMEOUT_MS,
+      ttlHours: parsed.data.IDEMPOTENCY_TTL_HOURS,
     },
   };
 }

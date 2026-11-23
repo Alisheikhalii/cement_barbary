@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   canonicalRoutePath,
+  IDEMPOTENT_OPT_OUT,
   isAllowlistedPublicRoute,
   isAllowlistedSelfServiceRoute,
   markerCount,
@@ -34,6 +35,7 @@ function route(overrides: Partial<ScannedRoute> = {}): ScannedRoute {
     isPublic: false,
     isSelfService: false,
     isPermission: true,
+    isIdempotent: false,
     classLevelMarker: false,
     permission: TENANT_PERMISSION,
     bodySchema: null,
@@ -95,6 +97,66 @@ describe('route scan — markers', () => {
         route({ isPermission: false, isSelfService: false, isPublic: false, permission: null }),
       ),
     ).toBe(0);
+  });
+});
+
+describe('route scan — idempotency coverage (ADR-010 L10)', () => {
+  it('requires @Idempotent() on every mutating permission route', () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      expect(codes([route({ method, isIdempotent: false })])).toContain(
+        'AUTHZ_IDEMPOTENT_REQUIRED',
+      );
+      expect(scanRoutes([route({ method, isIdempotent: true })], 'test')).toEqual([]);
+    }
+  });
+
+  it('does not require the marker on a GET permission route', () => {
+    expect(scanRoutes([route({ method: 'GET', isIdempotent: false })], 'test')).toEqual([]);
+  });
+
+  it('exempts public routes (their own rotation/CAS semantics)', () => {
+    const login = route({
+      method: 'POST',
+      path: '/api/v1/auth/login',
+      isPermission: false,
+      isPublic: true,
+      isIdempotent: false,
+      permission: null,
+    });
+    expect(scanRoutes([login], 'test')).toEqual([]);
+  });
+
+  it('rejects the marker on a non-mutating route', () => {
+    expect(codes([route({ method: 'GET', isIdempotent: true })])).toContain(
+      'AUTHZ_IDEMPOTENT_NOT_APPLICABLE',
+    );
+  });
+
+  it('rejects the marker on a route with no verified principal (public)', () => {
+    const login = route({
+      method: 'POST',
+      path: '/api/v1/auth/login',
+      isPermission: false,
+      isPublic: true,
+      isIdempotent: true,
+      permission: null,
+    });
+    const found = codes([login]);
+    expect(found).toContain('AUTHZ_IDEMPOTENT_WITHOUT_PRINCIPAL');
+    // A public GET with the marker is both non-mutating and principal-less.
+    const publicGet = route({
+      method: 'GET',
+      path: '/health/live',
+      isPermission: false,
+      isPublic: true,
+      isIdempotent: true,
+      permission: null,
+    });
+    expect(codes([publicGet])).toContain('AUTHZ_IDEMPOTENT_NOT_APPLICABLE');
+  });
+
+  it('has an empty opt-out list (negative control: no silent exemption)', () => {
+    expect(IDEMPOTENT_OPT_OUT).toEqual([]);
   });
 });
 
