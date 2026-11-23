@@ -19,6 +19,8 @@ import { buildAuthApp } from './setup/auth-app.js';
  */
 
 const STAFF_PW = 'Correct-Horse!Battery9';
+/** Auth routes are public/self-authenticating, not `@Idempotent()`. */
+const IDEMPOTENCY_KEY = 'f1-07-limiter-failure-0001';
 
 let owner: Pool;
 let app: NestExpressApplication;
@@ -30,7 +32,16 @@ const username = 'limit.user';
 function login(identifier: string) {
   return request(app.getHttpServer())
     .post('/api/v1/auth/login')
+    .set('Idempotency-Key', IDEMPOTENCY_KEY)
     .send({ identifier, password: STAFF_PW });
+}
+
+async function idempotencyRows(): Promise<number> {
+  const res = await owner.query<{ n: number }>(
+    'SELECT count(*)::int AS n FROM idempotency_keys WHERE tenant_id = $1',
+    [tenantId],
+  );
+  return res.rows[0]?.n ?? 0;
 }
 
 describe('rate-limiter failure (F1-07 T01)', () => {
@@ -89,5 +100,15 @@ describe('rate-limiter failure (F1-07 T01)', () => {
       [tenantId],
     );
     expect(audits.rows[0]?.n).toBe(0);
+
+    // F1-07 T02 check: a 503 is never stored as an idempotent answer. The route
+    // carries no `@Idempotent()` marker, so the header is ignored entirely and
+    // a retry with the same key re-executes instead of replaying a 503.
+    expect(known.headers['idempotent-replayed']).toBeUndefined();
+    await expect(idempotencyRows()).resolves.toBe(0);
+    const retry = await login(`${username}@${code}`);
+    expect(retry.status).toBe(503);
+    expect(retry.headers['idempotent-replayed']).toBeUndefined();
+    await expect(idempotencyRows()).resolves.toBe(0);
   });
 });

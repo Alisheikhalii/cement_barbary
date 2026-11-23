@@ -79,7 +79,19 @@ async function credentialState(userId: string) {
     'SELECT password_hash, must_change_password FROM user_credentials WHERE user_id = $1',
     [userId],
   );
-  return res.rows[0];
+  const row = res.rows[0];
+  if (row === undefined) {
+    throw new Error('expected a credential row');
+  }
+  return row;
+}
+
+async function idempotencyRows(): Promise<number> {
+  const res = await owner.query<{ n: number }>(
+    'SELECT count(*)::int AS n FROM idempotency_keys WHERE tenant_id = $1',
+    [tenantId],
+  );
+  return res.rows[0]?.n ?? 0;
 }
 
 async function changeCounts(userId: string) {
@@ -130,12 +142,16 @@ describe('password-change transaction failures (F1-07 T01)', () => {
       const before = await credentialState(userId);
       const countsBefore = await changeCounts(userId);
 
+      // The change route is not `@Idempotent()`: the header must be inert, so
+      // no key row exists and a retry re-executes instead of replaying a 503.
+      const idemKey = `f1-07-change-tx-${sqlState}`;
       await installFailingTrigger(sqlState, userId);
       let response: request.Response | undefined;
       try {
         response = await request(app.getHttpServer())
           .post('/api/v1/auth/password/change')
           .set('Authorization', `Bearer ${changeToken}`)
+          .set('Idempotency-Key', idemKey)
           .send({ newPassword: NEW_PW });
       } finally {
         await removeFailingTrigger();
@@ -155,6 +171,21 @@ describe('password-change transaction failures (F1-07 T01)', () => {
       expect(after).toEqual(before);
       const countsAfter = await changeCounts(userId);
       expect(countsAfter).toEqual(countsBefore);
+
+      // Nothing was stored for the 503. The identical retry (same key, same
+      // body) must run the handler again and succeed, never replay the 503.
+      expect(res.headers['idempotent-replayed']).toBeUndefined();
+      await expect(idempotencyRows()).resolves.toBe(0);
+      const retry = await request(app.getHttpServer())
+        .post('/api/v1/auth/password/change')
+        .set('Authorization', `Bearer ${changeToken}`)
+        .set('Idempotency-Key', idemKey)
+        .send({ newPassword: NEW_PW });
+      expect(retry.status).toBe(200);
+      expect(retry.headers['idempotent-replayed']).toBeUndefined();
+      const afterRetry = await credentialState(userId);
+      expect(afterRetry.password_hash).not.toBe(before.password_hash);
+      await expect(idempotencyRows()).resolves.toBe(0);
     },
   );
 });

@@ -64,6 +64,27 @@ export class DomainError extends Error {
     });
   }
 
+  /**
+   * B6 optimistic concurrency: the row version moved since the operator loaded
+   * it — 409. Generic on purpose: no expected/actual version, no row id. The
+   * client reloads and retries; the message only says that.
+   */
+  static staleVersion(): DomainError {
+    return new DomainError(
+      'STALE_VERSION',
+      'این مورد توسط کاربر دیگری تغییر کرده است؛ دوباره بارگذاری کنید',
+      409,
+    );
+  }
+
+  /**
+   * B5 delete guard: a live child row still references this row — 409.
+   * Generic on purpose: never names the child, its count or its ids.
+   */
+  static inUse(): DomainError {
+    return new DomainError('IN_USE', 'این مورد در حال استفاده است و حذف نمی‌شود', 409);
+  }
+
   /** Missing/malformed `Idempotency-Key` on a marked route (ADR-010 L9) — 400. */
   static idempotencyKeyRequired(): DomainError {
     return new DomainError('IDEMPOTENCY_KEY_REQUIRED', 'کلید تکرار درخواست نامعتبر است', 400);
