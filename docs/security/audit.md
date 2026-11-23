@@ -173,8 +173,8 @@ credentials are used **only** by the migration runner, are never handed to appli
 trigger state is monitored (F8 runbook item; see AGENT.md §7). `bitabar_app` is not the owner and has
 `TRIGGER`/`REFERENCES` revoked, so it cannot change this.
 
-`idempotency_keys` expired rows are swept
-by the runtime job (DELETE allowed only for `expires_at < now()`); `integration_outbox` `sent` rows are kept until
+`idempotency_keys` expired rows are delete-eligible
+(DELETE allowed only for `expires_at < now()`); the sweep job itself is an F8/ops item, not part of F1-06; `integration_outbox` `sent` rows are kept until
 the F8 retention decision.
 
 ## Verification

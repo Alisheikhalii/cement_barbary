@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
@@ -325,6 +326,29 @@ describe('parseEnv outbox flags (ADR-010 L13/L14, owner CP5)', () => {
     expect(() =>
       parseEnv({ ...BASE_ENV, NODE_ENV: 'production', ADAPTER_MOCK_ENABLED: 'true' }),
     ).toThrow(/ADAPTER_MOCK_ENABLED: must be false in production/);
+  });
+
+  it('ships an .env.example outbox configuration the API accepts', () => {
+    const text = readFileSync(new URL('../../../../.env.example', import.meta.url), 'utf8');
+    const read = (key: string): string => {
+      const match = new RegExp(`^${key}=(.*)$`, 'm').exec(text);
+      if (match?.[1] === undefined) {
+        throw new Error(`${key} missing from .env.example`);
+      }
+      return match[1].trim();
+    };
+    const config = parseEnv({
+      ...BASE_ENV,
+      OUTBOX_POLL_MS: read('OUTBOX_POLL_MS'),
+      OUTBOX_BATCH_SIZE: read('OUTBOX_BATCH_SIZE'),
+      OUTBOX_LEASE_SECONDS: read('OUTBOX_LEASE_SECONDS'),
+      OUTBOX_MAX_ATTEMPTS: read('OUTBOX_MAX_ATTEMPTS'),
+      OUTBOX_ADAPTER_TIMEOUT_MS: read('OUTBOX_ADAPTER_TIMEOUT_MS'),
+      OUTBOX_BACKOFF_BASE_SECONDS: read('OUTBOX_BACKOFF_BASE_SECONDS'),
+    });
+    expect(config.outbox.leaseSeconds * 1000).toBeGreaterThan(
+      config.outbox.batchSize * config.outbox.adapterTimeoutMs,
+    );
   });
 
   it('allows both flags off in production and both flags on in development', () => {
