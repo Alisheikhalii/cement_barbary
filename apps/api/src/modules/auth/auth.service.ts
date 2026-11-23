@@ -4,7 +4,9 @@ import { DomainError } from '../../common/errors/domain-error.js';
 import { APP_CONFIG } from '../../config/config.module.js';
 import type { AppConfig } from '../../config/env.js';
 import { TenantContext } from '../../db/tenant-context.js';
+import { TenantDb } from '../../db/tenant-db.js';
 import { normalizePhone } from '../../security/pii/normalize.js';
+import { AuditWriter } from '../audit/audit-writer.js';
 import type { AssignableRole } from '../users/users.types.js';
 import { AuthRepository } from './auth.repository.js';
 import type { ChangePasswordInput, LoginInput } from './auth.dto.js';
@@ -94,6 +96,8 @@ export class AuthService {
     @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(AuthRepository) private readonly accounts: AuthRepository,
     @Inject(TenantContext) private readonly tenantContext: TenantContext,
+    @Inject(TenantDb) private readonly tenantDb: TenantDb,
+    @Inject(AuditWriter) private readonly audit: AuditWriter,
     @Inject(RATE_LIMITER) private readonly limiter: RateLimiter,
   ) {
     // Hashed key shapes: no raw phone, username or tenant code ever persists.
@@ -127,6 +131,9 @@ export class AuthService {
         tenantId: identity.tenantId,
         fingerprint: credentialFingerprint(credentials.passwordHash),
       });
+      // No session is created and nothing is written here, so there is no
+      // auth.login.success row: the completed change records
+      // auth.password.changed (L5: audit only paths that already write).
       return {
         kind: 'change',
         changeToken,
@@ -139,6 +146,15 @@ export class AuthService {
       identity.userId,
       identity.roles,
       meta,
+      {
+        action: 'auth.login.success',
+        // Q1: failed logins are not rows; this is how a delay episode becomes
+        // visible (the value was read before the counter reset).
+        metadata: {
+          method: this.passwordMethod.method,
+          prior_failed_attempts: identity.priorFailedAttempts ?? 0,
+        },
+      },
     );
     return { kind: 'session', ...session };
   }
@@ -216,6 +232,10 @@ export class AuthService {
       fingerprint = claims.chg;
     }
 
+    // Read-only and expensive work (Argon2 verify/hash, policy checks) runs
+    // BEFORE the write transaction, so a pooled connection is not held during
+    // hashing (T06 review LOW). The transaction below only writes: CAS hash,
+    // session revocations, new session and its audit row (ADR-009 L1/L5).
     return this.tenantContext.run({ tenantId }, async () => {
       // A18 for the change flow too: a disabled/deleted user or suspended
       // tenant must not be able to mint a fresh session with an old token.
@@ -296,17 +316,22 @@ export class AuthService {
       }
 
       const passwordHash = await this.passwords.hash(input.newPassword);
-      const changed = await this.accounts.setPasswordAndRevokeAll(
-        userId,
-        credentials.passwordHash,
-        passwordHash,
-      );
-      if (!changed) {
-        // Lost a race (double-submit / replayed change token): generic 401.
-        throw DomainError.invalidCredentials();
-      }
 
-      return this.openSession(tenantId, userId, roles, meta);
+      return this.tenantDb.run(async () => {
+        const changed = await this.accounts.setPasswordAndRevokeAll(
+          userId,
+          credentials.passwordHash,
+          passwordHash,
+        );
+        if (!changed) {
+          // Lost a race (double-submit / replayed change token): generic 401.
+          throw DomainError.invalidCredentials();
+        }
+
+        return this.openSession(tenantId, userId, roles, meta, {
+          action: 'auth.password.changed',
+        });
+      });
     });
   }
 
@@ -315,11 +340,29 @@ export class AuthService {
     userId: string,
     roles: readonly AssignableRole[],
     meta: SessionClientMeta,
+    audit: { readonly action: string; readonly metadata?: Record<string, string | number> },
   ): Promise<SessionResult> {
     // BR-18: for a driver-only account the insert and the sibling revocation
-    // share ONE transaction inside SessionRepository.create().
+    // share ONE transaction inside SessionRepository.create(); the audit row
+    // commits in that same transaction (ADR-009 L1/L5).
     const session = await this.tenantContext.run({ tenantId }, () =>
-      this.sessions.issue(userId, meta, { singleSession: isDriverOnly(roles) }),
+      this.tenantDb.run(async () => {
+        const issued = await this.sessions.issue(userId, meta, {
+          singleSession: isDriverOnly(roles),
+        });
+        await this.audit.append({
+          actorType: 'user',
+          actorUserId: userId,
+          actorSessionId: issued.sessionId,
+          action: audit.action,
+          resourceType: 'auth_session',
+          resourceId: issued.sessionId,
+          outcome: 'success',
+          ip: meta.ip ?? null,
+          ...(audit.metadata === undefined ? {} : { metadata: audit.metadata }),
+        });
+        return issued;
+      }),
     );
     const accessToken = await this.tokens.signAccessToken({
       userId,

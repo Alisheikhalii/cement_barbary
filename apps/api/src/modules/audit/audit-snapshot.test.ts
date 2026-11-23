@@ -48,6 +48,19 @@ describe('audit snapshots', () => {
     });
   });
 
+  it('stores only real, bounded, deduplicated role codes', () => {
+    expect(toAuditSnapshot('user', { roles: ['DRIVER', 'FACTORY_OPERATOR', 'DRIVER'] })).toEqual({
+      roles: ['DRIVER', 'FACTORY_OPERATOR'],
+    });
+    // Shape-only here; catalog membership is enforced by the role service.
+    // Wrong case, non-string item, or too many are dropped.
+    expect(toAuditSnapshot('user', { roles: ['driver'] })).toBeNull();
+    expect(toAuditSnapshot('user', { roles: ['DRIVER', 1] })).toBeNull();
+    expect(
+      toAuditSnapshot('user', { roles: Array.from({ length: 17 }, () => 'DRIVER') }),
+    ).toBeNull();
+  });
+
   it('re-projection is idempotent', () => {
     const row = { id: '00000000-0000-4000-8000-000000000001', username: 'a.b', status: 'active' };
     expect(projectAuditSnapshot('user', toAuditSnapshot('user', row))).toEqual(

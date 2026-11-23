@@ -20,6 +20,8 @@ const SNAPSHOTS: Readonly<Record<string, readonly string[]>> = Object.freeze({
     'username',
     'displayName',
     'status',
+    // Role codes only (never a user-supplied string); see projectValue.
+    'roles',
     'createdAt',
     'updatedAt',
     'deletedAt',
@@ -48,7 +50,12 @@ function projectValue(
     return { keep: true, value };
   }
   if (typeof value === 'string') {
-    const masked = maskValue(key, value);
+    // C0 controls are stripped so the writer's jsonb-size estimate matches the
+    // server (jsonb escapes control characters more verbosely than
+    // JSON.stringify) and so an audit row never contains terminal control
+    // bytes from a future caller.
+    // eslint-disable-next-line no-control-regex -- deliberate: strip C0/DEL bytes
+    const masked = maskValue(key, value).replace(/[\u0000-\u001F\u007F]/g, '');
     return {
       keep: true,
       value: masked.length > MAX_VALUE_LENGTH ? masked.slice(0, MAX_VALUE_LENGTH) : masked,
@@ -57,8 +64,23 @@ function projectValue(
   if (value instanceof Date) {
     return { keep: true, value: value.toISOString() };
   }
-  // Objects and arrays are not allowlistable: a nested structure could carry a
-  // field nobody reviewed.
+  // The single array exception: a role-code set on `user`. Codes come from the
+  // closed catalog, are sorted (deterministic snapshots) and bounded.
+  // Role-code shape only: the closed-catalog check happens on the write path
+  // (roleCodeSchema in UserRoleService) and in the `user_roles` FK. The role
+  // constants are owned by the users module and importing them here is
+  // lint-restricted (ADR-008 Z5), so this layer stays shape-strict and bounded.
+  if (key === 'roles' && Array.isArray(value)) {
+    const codes = value.filter(
+      (item): item is string => typeof item === 'string' && /^[A-Z][A-Z0-9_]{0,31}$/.test(item),
+    );
+    if (codes.length === value.length && codes.length <= 16) {
+      return { keep: true, value: [...new Set(codes)].sort() };
+    }
+    return { keep: false, value: undefined };
+  }
+  // Other objects and arrays are not allowlistable: a nested structure could
+  // carry a field nobody reviewed.
   return { keep: false, value: undefined };
 }
 

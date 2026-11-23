@@ -8,12 +8,15 @@ import { z } from 'zod';
 
 import { parseEnv } from '../../config/env.js';
 import { loadEnvFiles } from '../../config/load-env.js';
+import { AuditWriter } from '../../modules/audit/audit-writer.js';
 import { AuthRepository } from '../../modules/auth/auth.repository.js';
+import { UserRoleService } from '../../modules/users/user-role.service.js';
 import { PasswordService } from '../../modules/auth/password.service.js';
 import { checkPasswordPolicy, passwordKindForRoles } from '../../modules/auth/password-policy.js';
 import { UsersRepository } from '../../modules/users/users.repository.js';
 import type { AssignableRole } from '../../modules/users/users.types.js';
 import { PiiService } from '../../security/pii/pii-crypto.js';
+import { AuditStore } from '../audit-store.js';
 import * as schema from '../schema/index.js';
 import { TenantContext } from '../tenant-context.js';
 import { TenantDb } from '../tenant-db.js';
@@ -156,6 +159,8 @@ export async function runDevSeed(deps: DevSeedDeps): Promise<DevSeedResult> {
     const tenantDb = new TenantDb(drizzle(appPool, { schema }));
     const users = new UsersRepository(tenantDb, tenantContext, deps.pii);
     const credentials = new AuthRepository(tenantDb, tenantContext, deps.pii);
+    const audit = new AuditWriter(tenantContext, deps.pii, new AuditStore(tenantDb));
+    const userRoles = new UserRoleService(tenantDb, users, audit);
 
     let created = 0;
     let skipped = 0;
@@ -182,8 +187,9 @@ export async function runDevSeed(deps: DevSeedDeps): Promise<DevSeedResult> {
             created += 1;
             userId = dto.id;
           }
-          // Idempotent by design (onConflictDoNothing in the repository).
-          await users.assignRole(userId, entry.role);
+          // The only role-write path (F1-06 D2): idempotent, and a real
+          // assignment writes its system audit row in this transaction.
+          await userRoles.assign(userId, entry.role, { type: 'system', tool: 'seed:dev' });
 
           // A19: first credentials only; a re-run never rotates an existing one.
           if ((await credentials.getCredentials(userId)) === null) {

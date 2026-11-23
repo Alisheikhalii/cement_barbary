@@ -20,7 +20,16 @@ ADR-009 (audit), ADR-010 (idempotency/outbox); plan: `docs/plan/F1-06.md`; DB ru
 | Domain service writes (F1-07+)          | `AuditWriter.append` in the caller's tx      | user        | via `auditChange()`                  |
 
 **Never audited as rows:** failed logins, delay hits, non-sensitive denials, replays of idempotent requests,
-health checks. Failed logins go to the structured security log only (see below).
+health checks. Failed logins go to the structured security log only (see below). A login that stops at the
+forced-password-change step creates no session and writes nothing, so it is not a row either; the completed change
+records `auth.password.changed`.
+
+**Role changes (F1-06 T06, D2).** `UserRoleService` is the only caller of the SR-05 role functions. A nonexistent,
+other-tenant or soft-deleted user gets the identical generic 404 for **assign and revoke**, so neither operation is a
+user-existence oracle. A real change writes `user.role.assigned`/`.revoked` with the full role-code set before and
+after (`before`/`after` `{ roles: [...] }`), `metadata.roleCode`, and the actor (`user` + session, or `system` with
+`metadata.tool` for the CLI). The visibility check, the role write and the row share one transaction. Idempotent
+assign/revoke writes no row because nothing changed.
 
 **`reason` is free text (owner CP1 A6).** It is capped at `SENSITIVE_REASON_MAX_LENGTH` (500, shared constant,
 Zod-validated) and stored as written. **The UI must warn operators not to enter personal data** (phone numbers,
@@ -65,6 +74,10 @@ against a human typing PII into it.
 2. Add an entity entry to `toAuditSnapshot` **only if** before/after is meaningful. The entry is an allowlist of
    column names; PII columns map to the masking helpers; `*_enc`, `*_hash`, password/token/cookie columns are never
    allowed. A new column is invisible to audit until it is added deliberately.
+   Size caps are enforced by both sides with the **same measure**: the DB CHECK is `octet_length(col::text) ≤ 16384`
+   and `AuditWriter` counts the same jsonb text form (separator spaces included) before SQL, so a boundary snapshot
+   is rejected as `AUDIT_ENTRY_INVALID` instead of aborting the caller's transaction on a CHECK. `reason` is counted
+   in characters (code points), matching PostgreSQL `length()` — a Persian + emoji string of 500 characters is valid.
 3. In the service, after the write succeeds and inside the same transaction, call
    `auditChange({ resourceType, resourceId, before, after })`, then `AuditWriter.append({ action, outcome:
 'success', … })` — or let a sensitive route's interceptor do it. The row then names the changed entity/id (the

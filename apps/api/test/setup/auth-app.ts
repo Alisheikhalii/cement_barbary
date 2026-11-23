@@ -18,10 +18,16 @@ import { RATE_LIMITER, type RateLimiter } from '../../src/modules/auth/rate-limi
  * are applied BEFORE the config module parses process.env. Extra modules are
  * for test-only probe controllers (e.g. the sensitive-authorization route).
  */
+export interface AuthAppOverride {
+  readonly provide: unknown;
+  readonly useValue: unknown;
+}
+
 export async function buildAuthApp(
   env: Record<string, string> = {},
   extraModules: readonly Type[] = [],
   options: { passwordMethodClock?: PasswordMethodClock; rateLimiter?: RateLimiter } = {},
+  overrides: readonly AuthAppOverride[] = [],
 ): Promise<NestExpressApplication> {
   Object.assign(process.env, {
     DATABASE_URL: inject('appUrl'),
@@ -36,6 +42,9 @@ export async function buildAuthApp(
   }
   if (options.rateLimiter !== undefined) {
     builder.overrideProvider(RATE_LIMITER).useValue(options.rateLimiter);
+  }
+  for (const override of overrides) {
+    builder.overrideProvider(override.provide as never).useValue(override.useValue);
   }
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();

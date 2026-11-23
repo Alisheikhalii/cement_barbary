@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 
 import { PiiModule } from '../../security/pii/pii.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthRepository } from './auth.repository.js';
@@ -18,12 +19,13 @@ import { TokenService } from './token.service.js';
 
 /**
  * F1-04 auth module (T06/T07). The global AuthGuard makes authentication deny
- * by default; @Public() declares the exceptions. No RBAC (F1-05), no audit
- * (F1-06), no OTP (§J). DatabaseModule (TenantDb/TenantContext/AuthLookup) and
- * ConfigModule are global; PiiModule supplies the blind-index HMAC.
+ * by default; @Public() declares the exceptions. RBAC lives in AuthzModule
+ * (F1-05); auth events are audited through AuditModule (F1-06 T06); no OTP
+ * (§J). DatabaseModule (TenantDb/TenantContext/AuthLookup) and ConfigModule are
+ * global; PiiModule supplies the blind-index HMAC.
  */
 @Module({
-  imports: [PiiModule],
+  imports: [PiiModule, AuditModule],
   controllers: [AuthController],
   providers: [
     PasswordService,

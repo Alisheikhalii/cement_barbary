@@ -178,10 +178,11 @@ describe('UsersRepository (integration, runtime role)', () => {
       });
     }
     // Linking A's user from tenant B's context: the user is invisible in B
-    // (RLS), so the live-user check rejects → BAD_INPUT, not a raw PG error.
-    // The composite FK stays as defense in depth (proven raw in rls.int.test.ts).
+    // (RLS), so the SR-05 function rejects → the same generic 404 as revoke
+    // (F1-06 D2), not a raw PG error. The composite FK stays as defense in
+    // depth (proven raw in rls.int.test.ts).
     await expect(asTenant(tenantB, () => repo.assignRole(u.id, 'DRIVER'))).rejects.toMatchObject({
-      code: 'BAD_INPUT',
+      code: 'NOT_FOUND',
     });
 
     // Soft-deleted (hidden) users cannot gain roles (the FK has no deleted_at filter).
@@ -191,7 +192,7 @@ describe('UsersRepository (integration, runtime role)', () => {
     await asTenant(tenantA, () => repo.softDelete(gone.id));
     await expect(asTenant(tenantA, () => repo.assignRole(gone.id, 'DRIVER'))).rejects.toMatchObject(
       {
-        code: 'BAD_INPUT',
+        code: 'NOT_FOUND',
       },
     );
 

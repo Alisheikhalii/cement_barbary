@@ -2,10 +2,13 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
 import type { AppConfig } from '../config/env.js';
+import { AuditWriter } from '../modules/audit/audit-writer.js';
 import { AuthRepository } from '../modules/auth/auth.repository.js';
 import { PasswordService } from '../modules/auth/password.service.js';
+import { UserRoleService } from '../modules/users/user-role.service.js';
 import type { AssignableRole } from '../modules/users/users.types.js';
 import { UsersRepository } from '../modules/users/users.repository.js';
+import { AuditStore } from './audit-store.js';
 import { PiiService } from '../security/pii/pii-crypto.js';
 import { listTenants } from './auth-lookup.js';
 import type { Db } from './database.providers.js';
@@ -92,6 +95,10 @@ export async function createOperatorRuntime(config: AppConfig): Promise<Operator
   const users = new UsersRepository(tenantDb, tenantContext, pii);
   const authRepository = new AuthRepository(tenantDb, tenantContext, pii);
   const passwords = new PasswordService(config);
+  // CLI writes are audited as `system` (ADR-009 L4/L5) inside the same
+  // transaction as the change.
+  const audit = new AuditWriter(tenantContext, pii, new AuditStore(tenantDb));
+  const userRoles = new UserRoleService(tenantDb, users, audit);
 
   return {
     passwords,
@@ -118,7 +125,12 @@ export async function createOperatorRuntime(config: AppConfig): Promise<Operator
             displayName: input.displayName,
             ...(input.phone !== undefined ? { phone: input.phone } : {}),
           });
-          await users.assignRole(user.id, input.role);
+          // The only role-write path (F1-06 D2): visibility check, SR-05
+          // function and the user.role.assigned row share this transaction.
+          await userRoles.assign(user.id, input.role, {
+            type: 'system',
+            tool: 'cli:create-user',
+          });
           await authRepository.createCredentials(user.id, input.passwordHash, input.expiresAt);
           return user.id;
         }),
@@ -149,19 +161,35 @@ export async function createOperatorRuntime(config: AppConfig): Promise<Operator
     },
 
     async resetPassword(tenantId, userId, passwordHash, expiresAt) {
-      return tenantContext.run({ tenantId }, async (): Promise<'ok' | 'missing' | 'stale'> => {
-        const current = await authRepository.getCredentials(userId);
-        if (current === null) {
-          return 'missing';
-        }
-        const changed = await authRepository.setOneTimePassword(
-          userId,
-          current.passwordHash,
-          passwordHash,
-          expiresAt,
-        );
-        return changed ? 'ok' : 'stale';
-      });
+      return tenantContext.run({ tenantId }, () =>
+        // One transaction: CAS password reset, session revocation and the
+        // system audit row commit together (ADR-009 L1/L5).
+        tenantDb.run(async (): Promise<'ok' | 'missing' | 'stale'> => {
+          const current = await authRepository.getCredentials(userId);
+          if (current === null) {
+            return 'missing';
+          }
+          const changed = await authRepository.setOneTimePassword(
+            userId,
+            current.passwordHash,
+            passwordHash,
+            expiresAt,
+          );
+          if (!changed) {
+            return 'stale';
+          }
+          await audit.append({
+            actorType: 'system',
+            actorUserId: null,
+            action: 'auth.password.reset',
+            resourceType: 'user',
+            resourceId: userId,
+            outcome: 'success',
+            metadata: { tool: 'cli:reset-password' },
+          });
+          return 'ok';
+        }),
+      );
     },
 
     async close(): Promise<void> {

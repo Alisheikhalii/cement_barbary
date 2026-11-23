@@ -241,7 +241,10 @@ export class UsersRepository {
           await tx.execute(sql`select app.assign_user_role(${userId}, ${parsed.data})`);
         }),
       {
-        P0002: () => DomainError.badInput(),
+        // P0002 = no such live user in this tenant (unknown, other tenant or
+        // soft-deleted). Same generic 404 as revoke, so neither operation is
+        // a user-existence oracle (F1-06 D2).
+        P0002: () => DomainError.notFound(),
         '22023': () => DomainError.badInput(),
         '23503': () => DomainError.badInput(),
         '23514': () => DomainError.badInput(),
@@ -252,7 +255,9 @@ export class UsersRepository {
   /**
    * Revokes a role through app.revoke_user_role() (SR-05). The function locks
    * the live user row, deletes only a same-tenant link and revokes sessions in
-   * the same transaction. Returns true only when a link was actually removed.
+   * the same transaction. Returns true only when a link was actually removed;
+   * an invisible user is the generic 404, the same as `assignRole` (the
+   * client-facing parity is owned by `UserRoleService`).
    */
   async revokeRole(userId: string, roleCode: string): Promise<boolean> {
     if (!userIdSchema.safeParse(userId).success) {
@@ -262,6 +267,7 @@ export class UsersRepository {
     if (!parsed.success) {
       throw DomainError.badInput();
     }
+    const tenantId = this.tenantId();
     return this.runGuarded(
       () =>
         this.tenantDb.run(async (tx) => {
@@ -269,13 +275,49 @@ export class UsersRepository {
             sql`select app.revoke_user_role(${userId}, ${parsed.data}) as removed`,
           );
           const row = result.rows[0] as { removed: boolean } | undefined;
-          return row?.removed === true;
+          if (row?.removed === true) {
+            return true;
+          }
+          // The function returns false for BOTH "no such link" and "invisible
+          // user". Make the repository contract symmetric with assignRole:
+          // an invisible user is the generic 404, a live user without that
+          // role is `false` (F1-06 T06 review LOW 6).
+          const live = await tx
+            .select({ id: users.id })
+            .from(users)
+            .where(and(eq(users.tenantId, tenantId), eq(users.id, userId), isNull(users.deletedAt)))
+            .limit(1);
+          if (live.length === 0) {
+            throw DomainError.notFound();
+          }
+          return false;
         }),
       {
-        P0002: () => DomainError.badInput(),
+        // Same generic 404 as assign (F1-06 D2).
+        P0002: () => DomainError.notFound(),
         '22023': () => DomainError.badInput(),
       },
     );
+  }
+
+  /**
+   * Locks the live user row in the current transaction (F1-06 T06 review).
+   * Role changes take this lock BEFORE reading the role set, so a concurrent
+   * assign/revoke serializes and the loser sees the winner's roles; it also
+   * matches the lock order of the SR-05 functions and the session flows.
+   */
+  async lockForRoleChange(userId: string): Promise<void> {
+    if (!userIdSchema.safeParse(userId).success) {
+      throw DomainError.badInput();
+    }
+    const tenantId = this.tenantId();
+    await this.tenantDb.run(async (tx) => {
+      await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.tenantId, tenantId), eq(users.id, userId), isNull(users.deletedAt)))
+        .for('update');
+    });
   }
 
   /** The role codes a user holds in the current tenant (FK guarantees catalog membership). */

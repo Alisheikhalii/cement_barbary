@@ -75,7 +75,7 @@ export class SessionRepository {
   async create(
     input: NewSession,
     options: { readonly revokeOtherSessions?: boolean } = {},
-  ): Promise<{ readonly id: string }> {
+  ): Promise<{ readonly id: string; readonly revokedSiblings: number }> {
     const tenantId = this.tenantId();
     const exclusive = options.revokeOtherSessions === true;
     return this.tenantDb.run(async (tx) => {
@@ -102,8 +102,9 @@ export class SessionRepository {
       if (!row) {
         throw DomainError.internal();
       }
+      let revokedSiblings = 0;
       if (exclusive) {
-        await tx
+        const revoked = await tx
           .update(authSessions)
           .set({ revokedAt: new Date(), revokeReason: 'sibling' })
           .where(
@@ -114,8 +115,9 @@ export class SessionRepository {
               isNull(authSessions.revokedAt),
             ),
           );
+        revokedSiblings = revoked.rowCount ?? 0;
       }
-      return { id: row.id };
+      return { id: row.id, revokedSiblings };
     });
   }
 
@@ -291,6 +293,24 @@ export class SessionRepository {
         return { outcome: 'reuse', familyId: after.familyId, revokedSessions: revoked };
       }
       return { outcome: 'mismatch' };
+    });
+  }
+
+  /**
+   * Locks the user row in the current transaction. Session flows that also
+   * write an audit row take this lock FIRST: the audit insert's composite FK
+   * takes a KEY SHARE lock on the same row, and rotation takes FOR UPDATE — a
+   * fixed user-then-session order is what prevents a lock-upgrade deadlock
+   * between a rotation and a reuse-revocation under concurrency.
+   */
+  async lockUser(userId: string): Promise<void> {
+    const tenantId = this.tenantId();
+    await this.tenantDb.run(async (tx) => {
+      await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.tenantId, tenantId), eq(users.id, userId)))
+        .for('update');
     });
   }
 

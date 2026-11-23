@@ -55,16 +55,109 @@ export interface AuditAppendEntry {
   readonly requestId?: string | null;
 }
 
+/**
+ * The DB CHECK is `octet_length(col::text) <= 16384`; PostgreSQL prints jsonb
+ * with one space after every `:` and `,` outside strings, so JSON.stringify's
+ * byte length alone UNDER-counts and a boundary payload would pass here then
+ * abort the business transaction on the CHECK. Count the separators too.
+ * Snapshot strings have C0 controls stripped in projectValue, so both sides
+ * escape quotes/backslashes identically and this measure matches the DB.
+ */
+function jsonbTextBytes(json: string): number {
+  let separators = 0;
+  let inString = false;
+  let escaped = false;
+  for (const character of json) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+    } else if (character === '"') {
+      inString = true;
+    } else if (character === ':' || character === ',') {
+      separators += 1;
+    }
+  }
+  return Buffer.byteLength(json, 'utf8') + separators;
+}
+
+/** A well-formed string has no NUL and no lone surrogate (PostgreSQL rejects both). */
+function isStorableString(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0) {
+      return false;
+    }
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      // charCodeAt past the end returns NaN; NaN comparisons are false, so a
+      // trailing high surrogate needs the explicit guard.
+      if (Number.isNaN(next) || next < 0xdc00 || next > 0xdfff) {
+        return false;
+      }
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Rejects values whose JSON text length differs from PostgreSQL's jsonb text:
+ * exponent numbers (`1e308` is 5 chars in JSON, 309 digits in jsonb) and
+ * strings PostgreSQL cannot store (NUL, lone surrogate) would otherwise pass
+ * the size guard and then abort the caller's transaction on the DB.
+ */
+function assertJsonbStorable(value: unknown): void {
+  const stack: unknown[] = [value];
+  let visited = 0;
+  while (stack.length > 0) {
+    visited += 1;
+    if (visited > 10_000) {
+      throw new Error('AUDIT_ENTRY_INVALID');
+    }
+    const current = stack.pop();
+    if (typeof current === 'number') {
+      if (!Number.isFinite(current) || /[eE]/.test(String(current))) {
+        throw new Error('AUDIT_ENTRY_INVALID');
+      }
+    } else if (typeof current === 'string') {
+      if (!isStorableString(current)) {
+        throw new Error('AUDIT_ENTRY_INVALID');
+      }
+    } else if (Array.isArray(current)) {
+      for (const item of current) {
+        stack.push(item);
+      }
+    } else if (typeof current === 'object' && current !== null && !(current instanceof Date)) {
+      for (const item of Object.values(current)) {
+        stack.push(item);
+      }
+    }
+  }
+}
+
 /** Mirrors the DB jsonb cap so an oversized snapshot fails locally, not as a 500. */
 function boundedSnapshot(value: unknown): unknown {
   if (value === null || value === undefined) {
     return null;
   }
   const json = JSON.stringify(value);
-  if (typeof json === 'string' && Buffer.byteLength(json, 'utf8') > MAX_JSON_BYTES) {
+  if (typeof json !== 'string') {
     throw new Error('AUDIT_ENTRY_INVALID');
   }
-  return value;
+  // Validate the PARSED shape: JSON.stringify applies `toJSON`, so this is
+  // exactly what PostgreSQL will receive, not the pre-serialization object.
+  assertJsonbStorable(JSON.parse(json) as unknown);
+  if (jsonbTextBytes(json) > MAX_JSON_BYTES) {
+    throw new Error('AUDIT_ENTRY_INVALID');
+  }
+  return JSON.parse(json) as unknown;
 }
 
 function bounded(value: string | null | undefined, max: number): string | null {
@@ -124,7 +217,9 @@ export class AuditWriter {
       !RESOURCE_TYPE_PATTERN.test(entry.resourceType) ||
       !OUTCOMES.has(entry.outcome) ||
       (entry.actorType === 'user' && entry.actorUserId === null) ||
-      (typeof entry.reason === 'string' && entry.reason.length > MAX_REASON_LENGTH)
+      // PostgreSQL `length()` counts characters (code points), not UTF-16
+      // units: a 500-character Persian + emoji reason must stay valid.
+      (typeof entry.reason === 'string' && [...entry.reason].length > MAX_REASON_LENGTH)
     ) {
       throw new Error('AUDIT_ENTRY_INVALID');
     }

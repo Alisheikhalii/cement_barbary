@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 
 import { Controller, Module, Post, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { PinoLogger } from 'nestjs-pino';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -14,7 +15,9 @@ import { APP_CONFIG } from '../src/config/config.module.js';
 import { parseEnv, type AppConfig } from '../src/config/env.js';
 import { AuthzFreshness } from '../src/db/authz-freshness.js';
 import { DbHealth } from '../src/db/db-health.js';
+import { TenantContext } from '../src/db/tenant-context.js';
 import { TenantDb } from '../src/db/tenant-db.js';
+import type { AuditWriter } from '../src/modules/audit/audit-writer.js';
 import { TokenService } from '../src/modules/auth/token.service.js';
 import { PersistentAuditHook } from '../src/modules/audit/persistent-audit-hook.js';
 import { AUDIT_HOOK, type AuditHook, type AuditRecord } from '../src/security/authz/audit-hook.js';
@@ -104,6 +107,7 @@ function bearer(token: string): Record<string, string> {
 async function buildAuditApp(
   env: Record<string, string> = {},
   config?: AppConfig,
+  hookOverride?: AuditHook,
 ): Promise<INestApplication> {
   // Never overwrite another test file's secret: a shared worker may reuse the
   // process env. Only fill what is missing, like the other authz tests.
@@ -118,7 +122,7 @@ async function buildAuditApp(
     .overrideProvider(AuthzFreshness)
     .useValue(freshness)
     .overrideProvider(AUDIT_HOOK)
-    .useValue(auditHook)
+    .useValue(hookOverride ?? auditHook)
     // Unit test: no database. The interceptor's outer transaction is stubbed;
     // the real transaction is exercised by test/audit-interceptor.int.test.ts.
     .overrideProvider(TenantDb)
@@ -273,6 +277,42 @@ describe('sensitive audit hook', () => {
     expect(order).toEqual(['handler', 'audit', 'audit']);
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({ outcome: 'failure', httpStatus: 500 });
+  });
+
+  it('keeps the 403 and logs only a code when the denied-row write fails (L6)', async () => {
+    const warn = vi.fn();
+    const failingHook = new PersistentAuditHook(
+      new TenantContext(),
+      {
+        append: async (): Promise<string> => {
+          throw new Error('AUDIT_DOWN');
+        },
+      } as unknown as AuditWriter,
+      { setContext: vi.fn(), warn } as unknown as PinoLogger,
+    );
+    const failingApp = await buildAuditApp({}, undefined, failingHook);
+    try {
+      const response = await request(failingApp.getHttpServer())
+        .post('/authz-audit-probe/success')
+        .set(bearer(carrierToken))
+        .send({ reason: SECRET_REASON })
+        .expect(403);
+
+      // Raw body, byte-for-byte the normal denial.
+      expect(response.text).toBe(
+        JSON.stringify({ error: { code: 'FORBIDDEN', message: 'دسترسی مجاز نیست' } }),
+      );
+      expect(warn).toHaveBeenCalledTimes(1);
+      const payload = warn.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(payload).toMatchObject({ outcome: 'denied', code: 'AUDIT_WRITE_FAILED' });
+      const serialized = JSON.stringify(payload);
+      expect(serialized).not.toContain(SECRET_REASON);
+      expect(serialized).not.toContain('127.0.0.1');
+      expect(serialized).not.toContain('::1');
+      expect(serialized).not.toContain(ACTION);
+    } finally {
+      await failingApp.close();
+    }
   });
 
   it('does not record anything for an anonymous request', async () => {

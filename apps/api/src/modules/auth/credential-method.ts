@@ -13,6 +13,11 @@ export interface AuthIdentity {
   readonly roles: readonly AssignableRole[];
   /** A19: the caller authenticated with a one-time password and may only change it. */
   readonly mustChangePassword: boolean;
+  /**
+   * A2/Q1: failures cleared by this successful verify (read before the reset).
+   * Recorded in the login audit row's metadata; not an authorization input.
+   */
+  readonly priorFailedAttempts?: number;
 }
 
 /**

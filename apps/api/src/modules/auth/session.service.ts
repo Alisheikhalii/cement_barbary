@@ -3,6 +3,8 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { AuthLookupService } from '../../db/auth-lookup.service.js';
 import { TenantContext } from '../../db/tenant-context.js';
+import { TenantDb } from '../../db/tenant-db.js';
+import { AuditWriter } from '../audit/audit-writer.js';
 import type { AssignableRole } from '../users/users.types.js';
 import { generateRefreshToken, hashRefreshToken, isRefreshTokenShape } from './refresh-token.js';
 import { SessionRepository } from './session.repository.js';
@@ -48,8 +50,31 @@ export class SessionService {
   constructor(
     @Inject(AuthLookupService) private readonly lookup: AuthLookupService,
     @Inject(TenantContext) private readonly tenantContext: TenantContext,
+    @Inject(TenantDb) private readonly tenantDb: TenantDb,
     @Inject(SessionRepository) private readonly sessions: SessionRepository,
+    @Inject(AuditWriter) private readonly audit: AuditWriter,
   ) {}
+
+  /** Session events share one shape; the row names the session that acted. */
+  private appendSessionAudit(
+    action: string,
+    userId: string,
+    sessionId: string,
+    metadata: Record<string, string | number> | null,
+    ip?: string | null,
+  ): Promise<string> {
+    return this.audit.append({
+      actorType: 'user',
+      actorUserId: userId,
+      actorSessionId: sessionId,
+      action,
+      resourceType: 'auth_session',
+      resourceId: sessionId,
+      outcome: 'success',
+      ...(metadata === null ? {} : { metadata }),
+      ip: ip ?? null,
+    });
+  }
 
   /**
    * Opens a new session family. Requires an active tenant context (the login
@@ -64,17 +89,31 @@ export class SessionService {
     const refreshToken = generateRefreshToken();
     const familyId = uuidv7();
     const refreshExpiresAt = new Date(Date.now() + REFRESH_SESSION_TTL_SECONDS * 1000);
-    const { id } = await this.sessions.create(
-      {
-        userId,
-        familyId,
-        refreshHash: hashRefreshToken(refreshToken),
-        expiresAt: refreshExpiresAt,
-        ip: meta.ip ?? null,
-        userAgent: meta.userAgent ?? null,
-      },
-      { revokeOtherSessions: options.singleSession === true },
-    );
+    // Session insert + BR-18 sibling revocation + its audit row are one
+    // transaction (L5): a committed revocation always has its row.
+    const { id } = await this.tenantDb.run(async () => {
+      const created = await this.sessions.create(
+        {
+          userId,
+          familyId,
+          refreshHash: hashRefreshToken(refreshToken),
+          expiresAt: refreshExpiresAt,
+          ip: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+        },
+        { revokeOtherSessions: options.singleSession === true },
+      );
+      if (created.revokedSiblings > 0) {
+        await this.appendSessionAudit(
+          'auth.session.revoked_new_device',
+          userId,
+          created.id,
+          { revoked: created.revokedSiblings },
+          meta.ip ?? null,
+        );
+      }
+      return created;
+    });
     return { sessionId: id, familyId, refreshToken, refreshExpiresAt };
   }
 
@@ -93,44 +132,70 @@ export class SessionService {
     if (!found) {
       return null;
     }
-    if (found.reuseDetected) {
-      await this.tenantContext.run({ tenantId: found.tenantId }, () =>
-        this.sessions.revokeFamily(found.familyId),
-      );
-      return null;
-    }
-    if (found.revokedAt !== null || found.expiresAt.getTime() <= Date.now()) {
-      return null;
-    }
+    // One transaction covers the rotation (or the family revocation) AND the
+    // audit row (L5); the repository's own TenantDb.run calls reuse it.
+    return this.tenantContext.run({ tenantId: found.tenantId }, () =>
+      this.tenantDb.run(async () => {
+        // Fixed lock order (user then session) before any session write or
+        // audit insert; see SessionRepository.lockUser.
+        await this.sessions.lockUser(found.userId);
+        if (found.reuseDetected) {
+          const revoked = await this.sessions.revokeFamily(found.familyId);
+          // Only a revocation is a row: a replay after the family is already
+          // dead changes nothing and must not grow the table (T06 review LOW 4).
+          if (revoked > 0) {
+            await this.appendSessionAudit(
+              'auth.refresh.reuse_detected',
+              found.userId,
+              found.sessionId,
+              { revoked },
+              meta.ip ?? null,
+            );
+          }
+          return null;
+        }
+        if (found.revokedAt !== null || found.expiresAt.getTime() <= Date.now()) {
+          return null;
+        }
 
-    const refreshToken = generateRefreshToken();
-    const result = await this.tenantContext.run({ tenantId: found.tenantId }, () =>
-      this.sessions.rotate({
-        sessionId: found.sessionId,
-        oldHash,
-        newHash: hashRefreshToken(refreshToken),
-        ip: meta.ip ?? null,
-        userAgent: meta.userAgent ?? null,
+        const refreshToken = generateRefreshToken();
+        const result = await this.sessions.rotate({
+          sessionId: found.sessionId,
+          oldHash,
+          newHash: hashRefreshToken(refreshToken),
+          ip: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+        });
+        if (result.outcome === 'rotated') {
+          return {
+            sessionId: found.sessionId,
+            familyId: result.familyId,
+            tenantId: found.tenantId,
+            userId: result.userId,
+            roles: result.roles,
+            refreshToken,
+            refreshExpiresAt: found.expiresAt,
+          };
+        }
+        if (result.outcome === 'reuse') {
+          // The repository already revoked the family in this transaction; a
+          // concurrent loser must still get the generic failure. No row when
+          // nothing was revoked (replay after the family is already dead).
+          if (result.revokedSessions > 0) {
+            await this.appendSessionAudit(
+              'auth.refresh.reuse_detected',
+              found.userId,
+              found.sessionId,
+              { revoked: result.revokedSessions },
+              meta.ip ?? null,
+            );
+          }
+          return null;
+        }
+        // 'inactive' already revoked the session inside the rotation transaction.
+        return null;
       }),
     );
-    if (result.outcome === 'rotated') {
-      return {
-        sessionId: found.sessionId,
-        familyId: result.familyId,
-        tenantId: found.tenantId,
-        userId: result.userId,
-        roles: result.roles,
-        refreshToken,
-        refreshExpiresAt: found.expiresAt,
-      };
-    }
-    if (result.outcome === 'reuse') {
-      // The repository already revoked the family in the same transaction;
-      // a concurrent loser must still get the generic failure.
-      return null;
-    }
-    // 'inactive' already revoked the session inside the rotation transaction.
-    return null;
   }
 
   /**
@@ -147,13 +212,30 @@ export class SessionService {
     if (!found) {
       return;
     }
-    await this.tenantContext.run({ tenantId: found.tenantId }, async () => {
-      if (found.reuseDetected) {
-        await this.sessions.revokeFamily(found.familyId);
-      } else {
-        await this.sessions.revokeSession(found.sessionId, 'logout');
-      }
-    });
+    await this.tenantContext.run({ tenantId: found.tenantId }, () =>
+      this.tenantDb.run(async () => {
+        // Same user-then-session lock order as rotation (deadlock avoidance).
+        await this.sessions.lockUser(found.userId);
+        if (found.reuseDetected) {
+          const revoked = await this.sessions.revokeFamily(found.familyId);
+          if (revoked > 0) {
+            await this.appendSessionAudit(
+              'auth.refresh.reuse_detected',
+              found.userId,
+              found.sessionId,
+              { revoked },
+              null,
+            );
+          }
+          return;
+        }
+        const revoked = await this.sessions.revokeSession(found.sessionId, 'logout');
+        // Logout is idempotent and silent; only a real revocation is a row.
+        if (revoked) {
+          await this.appendSessionAudit('auth.logout', found.userId, found.sessionId, null, null);
+        }
+      }),
+    );
   }
 
   /**

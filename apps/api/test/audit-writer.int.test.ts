@@ -129,6 +129,58 @@ describe('audit writer (integration)', () => {
     expect(row?.after).toEqual({ id: userA, username: 'audit.writer.a', status: 'disabled' });
   });
 
+  it('accepts a near-cap payload and rejects an over-cap one before SQL', async () => {
+    // 16,000 ASCII chars plus JSON overhead is under the DB's 16 KiB jsonb
+    // text cap; the writer's estimate must match PostgreSQL, so this commits
+    // instead of aborting on the CHECK.
+    const id = await inTenant(tenantA, () =>
+      writer().append(entry({ requestId: 'req-cap-ok', metadata: { blob: 'a'.repeat(16_000) } })),
+    );
+    const row = await ownerPool().query<{ octets: number }>(
+      'SELECT octet_length(metadata::text) AS octets FROM audit_logs WHERE id = $1',
+      [id],
+    );
+    expect(row.rows[0]?.octets).toBeLessThanOrEqual(16_384);
+
+    // Over the cap: rejected as AUDIT_ENTRY_INVALID before any SQL, never as
+    // a DB CHECK error in the middle of the caller's transaction.
+    await expect(
+      inTenant(tenantA, () => writer().append(entry({ metadata: { blob: 'a'.repeat(16_400) } }))),
+    ).rejects.toThrow('AUDIT_ENTRY_INVALID');
+  });
+
+  it('rejects jsonb-hostile numbers and strings before SQL', async () => {
+    // `1e+308` is 6 characters in JSON but ~309 digits in jsonb text.
+    await expect(
+      inTenant(tenantA, () => writer().append(entry({ metadata: { n: 1e308 } }))),
+    ).rejects.toThrow('AUDIT_ENTRY_INVALID');
+    // NUL and a lone surrogate are unrepresentable in PostgreSQL text.
+    await expect(
+      inTenant(tenantA, () => writer().append(entry({ metadata: { s: 'a\u0000b' } }))),
+    ).rejects.toThrow('AUDIT_ENTRY_INVALID');
+    await expect(
+      inTenant(tenantA, () => writer().append(entry({ metadata: { s: '\ud800' } }))),
+    ).rejects.toThrow('AUDIT_ENTRY_INVALID');
+  });
+
+  it('counts reason characters like PostgreSQL length() (Persian + emoji)', async () => {
+    // 500 code points but 501 UTF-16 units: PostgreSQL length() = 500, and the
+    // row must be accepted.
+    const reason500 = `${'د'.repeat(499)}🙂`;
+    const id = await inTenant(tenantA, () =>
+      writer().append(entry({ reason: reason500, metadata: null })),
+    );
+    const row = await ownerPool().query<{ n: number }>(
+      'SELECT length(reason)::int AS n FROM audit_logs WHERE id = $1',
+      [id],
+    );
+    expect(row.rows[0]?.n).toBe(500);
+
+    await expect(
+      inTenant(tenantA, () => writer().append(entry({ reason: 'م'.repeat(501) }))),
+    ).rejects.toThrow('AUDIT_ENTRY_INVALID');
+  });
+
   it('supports a system actor with no user id', async () => {
     const id = await inTenant(tenantA, () =>
       writer().append(

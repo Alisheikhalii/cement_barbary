@@ -187,12 +187,13 @@ export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
       await this.dummyFailureWrite();
       return { ok: false };
     }
-    await this.resetFailures(row);
+    const priorFailedAttempts = await this.resetFailures(row);
     const identity: AuthIdentity = {
       tenantId: row.tenantId,
       userId: row.userId,
       roles: row.roles as readonly AssignableRole[],
       mustChangePassword: row.mustChangePassword,
+      priorFailedAttempts,
     };
     return { ok: true, identity };
   }
@@ -210,8 +211,8 @@ export class PasswordMethod implements CredentialMethod<PasswordLoginInput> {
     );
   }
 
-  private async resetFailures(row: AuthLookupRow): Promise<void> {
-    await this.tenantContext.run({ tenantId: row.tenantId }, () =>
+  private async resetFailures(row: AuthLookupRow): Promise<number> {
+    return this.tenantContext.run({ tenantId: row.tenantId }, () =>
       this.accounts.resetFailures(row.userId),
     );
   }

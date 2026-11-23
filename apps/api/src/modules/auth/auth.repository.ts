@@ -56,15 +56,26 @@ export class AuthRepository {
     }
   }
 
-  /** A2: a successful login clears the delay counters. */
-  async resetFailures(userId: string): Promise<void> {
+  /**
+   * A2: a successful login clears the delay counters. Returns the counter it
+   * cleared — read in the SAME transaction — so the login audit row can record
+   * `prior_failed_attempts` (Q1: failed logins are not rows, this is how a
+   * delay episode becomes visible).
+   */
+  async resetFailures(userId: string): Promise<number> {
     const tenantId = this.tenantId();
-    await this.tenantDb.run((tx) =>
-      tx
+    return this.tenantDb.run(async (tx) => {
+      const rows = await tx
+        .select({ failedAttempts: userCredentials.failedAttempts })
+        .from(userCredentials)
+        .where(and(eq(userCredentials.tenantId, tenantId), eq(userCredentials.userId, userId)))
+        .limit(1);
+      await tx
         .update(userCredentials)
         .set({ failedAttempts: 0, nextAttemptAt: null })
-        .where(and(eq(userCredentials.tenantId, tenantId), eq(userCredentials.userId, userId))),
-    );
+        .where(and(eq(userCredentials.tenantId, tenantId), eq(userCredentials.userId, userId)));
+      return rows[0]?.failedAttempts ?? 0;
+    });
   }
 
   /**
@@ -103,6 +114,10 @@ export class AuthRepository {
     const now = new Date();
     return this.runGuarded(() =>
       this.tenantDb.run(async (tx) => {
+        // Fixed user-then-session lock order (F1-06 T06 review): session
+        // revocation below must not be the first lock, or a concurrent refresh
+        // (user FOR UPDATE, then session) can deadlock with this transaction.
+        await this.lockUserInTx(tx, tenantId, userId);
         // Compare-and-swap on the hash the operator saw: two concurrent
         // resets cannot both succeed, so a printed password is never dead on
         // arrival (T08 review LOW 7).
@@ -217,6 +232,15 @@ export class AuthRepository {
     return this.tenantDb.run((tx) => this.accountActiveInTx(tx, tenantId, userId));
   }
 
+  /** Locks the user row in the caller's transaction (fixed lock order). */
+  private async lockUserInTx(tx: Tx, tenantId: string, userId: string): Promise<void> {
+    await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.tenantId, tenantId), eq(users.id, userId), isNull(users.deletedAt)))
+      .for('update');
+  }
+
   /** Same check inside a caller-owned transaction (used by the password CAS). */
   private async accountActiveInTx(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
     const userRows = await tx
@@ -255,6 +279,9 @@ export class AuthRepository {
     const tenantId = this.tenantId();
     const now = new Date();
     return this.tenantDb.run(async (tx) => {
+      // User lock FIRST: the session revocation below takes session-row locks,
+      // and refreshes take the user lock then session locks (fixed order).
+      await this.lockUserInTx(tx, tenantId, userId);
       // Re-check activity INSIDE the mutation transaction: a disable committed
       // before this point is caught (no write, generic 401). Under READ
       // COMMITTED a disable landing between this SELECT and the CAS UPDATE is
