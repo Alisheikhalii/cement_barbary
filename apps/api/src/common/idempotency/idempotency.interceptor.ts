@@ -14,6 +14,7 @@ import { from, lastValueFrom, type Observable } from 'rxjs';
 import { v7 as uuidv7 } from 'uuid';
 
 import { DomainError } from '../../common/errors/domain-error.js';
+import { sqlStateOf } from '../../common/errors/sql-state.js';
 import { deriveSuccessStatus } from '../../common/http/success-status.js';
 import {
   IDEMPOTENCY_KEY_PATTERN,
@@ -362,16 +363,4 @@ function mapClaimError(error: unknown): unknown {
     default:
       return error;
   }
-}
-
-/** PostgreSQL SQLSTATE, walking drizzle's wrapped-error `cause` chain. */
-function sqlStateOf(error: unknown, depth = 0): string | null {
-  if (depth > 5 || typeof error !== 'object' || error === null) {
-    return null;
-  }
-  const code = (error as { code?: unknown }).code;
-  if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) {
-    return code;
-  }
-  return sqlStateOf((error as { cause?: unknown }).cause, depth + 1);
 }

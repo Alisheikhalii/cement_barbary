@@ -64,6 +64,17 @@ roles }` or the generic failure. `PasswordMethod` now; `OtpMethod` later (plan �
   account (the A2 delay), per IP (`AUTH_RL_LOGIN_IP_PER_MIN`, 20) and per tenant-code
   (`AUTH_RL_LOGIN_TENANT_PER_MIN`, 60) — all env config. A Redis implementation can replace the DB
   one later without caller changes.
+  - **Accepted risk — rate-limit counter durability (F1-07 T01, owner approval):** each
+    `RateLimitStore.hit` runs in its own short transaction with
+    `SET LOCAL synchronous_commit = off` — the same pattern as the A2 delay counter. Counting
+    order, atomicity and lockout accuracy are unchanged, and a failed login still consumes the
+    bucket exactly as before; the change only removes the WAL-flush wait, which greatly reduces
+    the chance that 50 same-bucket hits serialize past the 5 s statement timeout. **Trade-off:**
+    after an OS/DB crash the last few rate-limit increments may be lost (a restart may grant a
+    few extra attempts); **apart from the A2 delay counter, which already uses the same setting,
+    every other write keeps full durability**. A limiter failure is fail-closed: login and
+    password-change answer a generic `503` + `Retry-After: 1`, identical for known and unknown
+    accounts, never a raw 500.
 - **A12 — CSRF:** SameSite=Lax **plus** an Origin / `Sec-Fetch-Site` check on the cookie endpoints;
   the access token never rides a cookie.
 - **A13 — Secrets from env only:** `AUTH_TOKEN_SECRET` (base64 → 32–64 random bytes), startup-checked

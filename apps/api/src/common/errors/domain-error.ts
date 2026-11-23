@@ -53,6 +53,17 @@ export class DomainError extends Error {
     });
   }
 
+  /**
+   * A transient dependency failed while the answer must stay generic — 503 with
+   * Retry-After (F1-07 T01: a rate-limit hit or the password-change transaction
+   * lost to overload). The body never names the account, identifier or SQLSTATE.
+   */
+  static serviceUnavailable(retryAfterSeconds = 1): DomainError {
+    return new DomainError('SERVICE_UNAVAILABLE', 'سرویس موقتاً در دسترس نیست', 503, {
+      retryAfterSeconds,
+    });
+  }
+
   /** Missing/malformed `Idempotency-Key` on a marked route (ADR-010 L9) — 400. */
   static idempotencyKeyRequired(): DomainError {
     return new DomainError('IDEMPOTENCY_KEY_REQUIRED', 'کلید تکرار درخواست نامعتبر است', 400);

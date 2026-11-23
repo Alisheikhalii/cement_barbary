@@ -65,9 +65,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const { status, body } = this.toError(exception);
     if (exception instanceof DomainError) {
-      // 429 (A11) and 409 IDEMPOTENCY_IN_PROGRESS (ADR-010 L8): the only
-      // domain details allowed to become a header. Clients get an explicit
-      // wait; no bucket or payload details.
+      // 429 (A11), 409 IDEMPOTENCY_IN_PROGRESS (ADR-010 L8) and 503
+      // SERVICE_UNAVAILABLE (F1-07 T01): the domain details allowed to become
+      // a Retry-After header. Clients get an explicit wait; no bucket, account
+      // or payload details.
       const retry = exception.details?.retryAfterSeconds;
       if (typeof retry === 'number' && Number.isFinite(retry)) {
         res.setHeader('Retry-After', String(Math.ceil(retry)));

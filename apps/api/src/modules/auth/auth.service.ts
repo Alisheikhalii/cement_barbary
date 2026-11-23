@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value import required: emitDecoratorMetadata emits PinoLogger as the constructor param type for DI
+import { PinoLogger } from 'nestjs-pino';
 
 import { DomainError } from '../../common/errors/domain-error.js';
+import { sqlStateOf } from '../../common/errors/sql-state.js';
 import { APP_CONFIG } from '../../config/config.module.js';
 import type { AppConfig } from '../../config/env.js';
 import { TenantContext } from '../../db/tenant-context.js';
@@ -21,6 +24,7 @@ import {
   RATE_LIMITER,
   rateLimitKeys,
   type RateLimiter,
+  type RateLimitVerdict,
 } from './rate-limiter.js';
 import { SessionService, type SessionClientMeta } from './session.service.js';
 import {
@@ -99,9 +103,11 @@ export class AuthService {
     @Inject(TenantDb) private readonly tenantDb: TenantDb,
     @Inject(AuditWriter) private readonly audit: AuditWriter,
     @Inject(RATE_LIMITER) private readonly limiter: RateLimiter,
+    private readonly logger: PinoLogger,
   ) {
     // Hashed key shapes: no raw phone, username or tenant code ever persists.
     this.keys = rateLimitKeys(config.pii.hmacKey);
+    this.logger.setContext(AuthService.name);
   }
 
   async login(input: LoginInput, meta: SessionClientMeta): Promise<LoginResult> {
@@ -236,103 +242,127 @@ export class AuthService {
     // BEFORE the write transaction, so a pooled connection is not held during
     // hashing (T06 review LOW). The transaction below only writes: CAS hash,
     // session revocations, new session and its audit row (ADR-009 L1/L5).
-    return this.tenantContext.run({ tenantId }, async () => {
-      // A18 for the change flow too: a disabled/deleted user or suspended
-      // tenant must not be able to mint a fresh session with an old token.
-      // Fast path only — the repository re-checks activity inside the
-      // compare-and-swap transaction that writes the new hash.
-      if (!(await this.accounts.isAccountActive(userId))) {
-        throw DomainError.invalidCredentials();
-      }
-      // LOW-4 fix: current-password guessing through this endpoint is
-      // throttled with the same per-account window as login.
-      const changeLimit = await this.limiter.hit(
-        this.keys.loginAccount(`password-change:${tenantId}:${userId}`),
-        this.config.auth.rateLimit.loginAccountPerMinute,
-        LOGIN_WINDOW_SECONDS,
-      );
-      if (!changeLimit.allowed) {
-        throw DomainError.tooManyRequests(changeLimit.retryAfterSeconds ?? LOGIN_WINDOW_SECONDS);
-      }
-      const credentials = await this.accounts.getCredentials(userId);
-      if (credentials === null) {
-        throw DomainError.invalidCredentials();
-      }
-      if (mode === 'change') {
-        // Single use: the token must still point at THIS credential row, and
-        // the account must still be in the forced-change window.
-        const current = Buffer.from(credentialFingerprint(credentials.passwordHash));
-        const presented = Buffer.from(fingerprint ?? '');
-        if (!constantTimeEquals(current, presented)) {
+    try {
+      return await this.tenantContext.run({ tenantId }, async () => {
+        // A18 for the change flow too: a disabled/deleted user or suspended
+        // tenant must not be able to mint a fresh session with an old token.
+        // Fast path only — the repository re-checks activity inside the
+        // compare-and-swap transaction that writes the new hash.
+        if (!(await this.accounts.isAccountActive(userId))) {
           throw DomainError.invalidCredentials();
         }
+        // LOW-4 fix: current-password guessing through this endpoint is
+        // throttled with the same per-account window as login.
+        const changeLimit = await this.limiterHit(
+          this.keys.loginAccount(`password-change:${tenantId}:${userId}`),
+          this.config.auth.rateLimit.loginAccountPerMinute,
+        );
+        if (!changeLimit.allowed) {
+          throw DomainError.tooManyRequests(changeLimit.retryAfterSeconds ?? LOGIN_WINDOW_SECONDS);
+        }
+        const credentials = await this.accounts.getCredentials(userId);
+        if (credentials === null) {
+          throw DomainError.invalidCredentials();
+        }
+        if (mode === 'change') {
+          // Single use: the token must still point at THIS credential row, and
+          // the account must still be in the forced-change window.
+          const current = Buffer.from(credentialFingerprint(credentials.passwordHash));
+          const presented = Buffer.from(fingerprint ?? '');
+          if (!constantTimeEquals(current, presented)) {
+            throw DomainError.invalidCredentials();
+          }
+          if (
+            !credentials.mustChangePassword ||
+            credentials.temporaryPasswordExpiresAt === null ||
+            credentials.temporaryPasswordExpiresAt.getTime() <= Date.now()
+          ) {
+            throw DomainError.invalidCredentials();
+          }
+        } else {
+          if (input.currentPassword === undefined) {
+            throw DomainError.badInput({ reason: 'current_password_required' });
+          }
+          const matches = await this.passwords.verify(
+            credentials.passwordHash,
+            input.currentPassword,
+          );
+          if (!matches) {
+            throw DomainError.invalidCredentials();
+          }
+        }
+
+        const roles = await this.accounts.getRoles(userId);
+        // A20: "never equal to the login identifier" must cover EVERY form of
+        // it — the bare username, username@tenant-code, and the phone. Checking
+        // only the bare username let `operator@acme` or a PIN equal to the phone
+        // through (review MEDIUM 1).
+        const identifiers = await this.accounts.getIdentifiers(userId);
+        const kind = passwordKindForRoles(roles);
+        const candidates = [
+          identifiers.username,
+          identifiers.username === null
+            ? null
+            : `${identifiers.username}@${identifiers.tenantCode}`,
+          identifiers.phone,
+        ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+        if (candidates.length === 0) {
+          assertPasswordPolicy(kind, input.newPassword, '');
+        } else {
+          for (const identifier of candidates) {
+            assertPasswordPolicy(kind, input.newPassword, identifier);
+          }
+        }
+        // Aliases of the phone count too: `9120000073`, `989120000073`, `+98…`
+        // and spaced forms all normalize to the same login identifier
+        // (review delta MEDIUM).
         if (
-          !credentials.mustChangePassword ||
-          credentials.temporaryPasswordExpiresAt === null ||
-          credentials.temporaryPasswordExpiresAt.getTime() <= Date.now()
+          identifiers.phone !== null &&
+          normalizedPhoneOrNull(input.newPassword) === identifiers.phone
         ) {
-          throw DomainError.invalidCredentials();
-        }
-      } else {
-        if (input.currentPassword === undefined) {
-          throw DomainError.badInput({ reason: 'current_password_required' });
-        }
-        const matches = await this.passwords.verify(
-          credentials.passwordHash,
-          input.currentPassword,
-        );
-        if (!matches) {
-          throw DomainError.invalidCredentials();
-        }
-      }
-
-      const roles = await this.accounts.getRoles(userId);
-      // A20: "never equal to the login identifier" must cover EVERY form of
-      // it — the bare username, username@tenant-code, and the phone. Checking
-      // only the bare username let `operator@acme` or a PIN equal to the phone
-      // through (review MEDIUM 1).
-      const identifiers = await this.accounts.getIdentifiers(userId);
-      const kind = passwordKindForRoles(roles);
-      const candidates = [
-        identifiers.username,
-        identifiers.username === null ? null : `${identifiers.username}@${identifiers.tenantCode}`,
-        identifiers.phone,
-      ].filter((value): value is string => typeof value === 'string' && value.length > 0);
-      if (candidates.length === 0) {
-        assertPasswordPolicy(kind, input.newPassword, '');
-      } else {
-        for (const identifier of candidates) {
-          assertPasswordPolicy(kind, input.newPassword, identifier);
-        }
-      }
-      // Aliases of the phone count too: `9120000073`, `989120000073`, `+98…`
-      // and spaced forms all normalize to the same login identifier
-      // (review delta MEDIUM).
-      if (
-        identifiers.phone !== null &&
-        normalizedPhoneOrNull(input.newPassword) === identifiers.phone
-      ) {
-        throw DomainError.badInput({ reason: 'equals_identifier' });
-      }
-
-      const passwordHash = await this.passwords.hash(input.newPassword);
-
-      return this.tenantDb.run(async () => {
-        const changed = await this.accounts.setPasswordAndRevokeAll(
-          userId,
-          credentials.passwordHash,
-          passwordHash,
-        );
-        if (!changed) {
-          // Lost a race (double-submit / replayed change token): generic 401.
-          throw DomainError.invalidCredentials();
+          throw DomainError.badInput({ reason: 'equals_identifier' });
         }
 
-        return this.openSession(tenantId, userId, roles, meta, {
-          action: 'auth.password.changed',
+        const passwordHash = await this.passwords.hash(input.newPassword);
+
+        return this.tenantDb.run(async () => {
+          const changed = await this.accounts.setPasswordAndRevokeAll(
+            userId,
+            credentials.passwordHash,
+            passwordHash,
+          );
+          if (!changed) {
+            // Lost a race (double-submit / replayed change token): generic 401.
+            throw DomainError.invalidCredentials();
+          }
+
+          return this.openSession(tenantId, userId, roles, meta, {
+            action: 'auth.password.changed',
+          });
         });
       });
-    });
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      // F1-07 T01: a concurrent change must never surface a raw 500. A deadlock
+      // or statement timeout anywhere after token verification means this
+      // attempt applied nothing (its transaction rolled back), so the client
+      // gets a retryable generic 503 and the server logs only the structural
+      // event code and SQLSTATE.
+      const sqlState = sqlStateOf(error);
+      if (sqlState === '40P01' || sqlState === '57014') {
+        this.logger.warn(
+          {
+            eventCode: sqlState === '40P01' ? 'AUTH_CHANGE_TX_DEADLOCK' : 'AUTH_CHANGE_TX_TIMEOUT',
+            sqlState,
+          },
+          'password change transaction aborted',
+        );
+        throw DomainError.serviceUnavailable();
+      }
+      throw error;
+    }
   }
 
   private async openSession(
@@ -415,10 +445,32 @@ export class AuthService {
       });
     }
     for (const check of checks) {
-      const verdict = await this.limiter.hit(check.key, check.limit, LOGIN_WINDOW_SECONDS);
+      const verdict = await this.limiterHit(check.key, check.limit);
       if (!verdict.allowed) {
         throw DomainError.tooManyRequests(verdict.retryAfterSeconds ?? LOGIN_WINDOW_SECONDS);
       }
+    }
+  }
+
+  /**
+   * F1-07 T01: a limiter failure (for example a 57014 left after the counter
+   * transaction) is fail-closed and account-agnostic. The hit runs before any
+   * credential lookup, so known and unknown identifiers get the same generic
+   * 503 + Retry-After, never a raw 500 and never an existence oracle. Only the
+   * structural event code and SQLSTATE are logged.
+   */
+  private async limiterHit(key: string, limit: number): Promise<RateLimitVerdict> {
+    try {
+      return await this.limiter.hit(key, limit, LOGIN_WINDOW_SECONDS);
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      this.logger.warn(
+        { eventCode: 'AUTH_RATE_LIMIT_UNAVAILABLE', sqlState: sqlStateOf(error) },
+        'rate limiter hit failed',
+      );
+      throw DomainError.serviceUnavailable();
     }
   }
 }
