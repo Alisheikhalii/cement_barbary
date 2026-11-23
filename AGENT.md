@@ -98,6 +98,12 @@
 - (ثبت T06، ۱۴۰۵/۰۸/۲۹) عدم‌تقارن عمدی Repository: `findByUsername` برای ورودی بدفرمت `null` برمی‌گرداند ولی `findByPhone` همان ورودی را با `badInput` رد می‌کند. **الزام F1-04:** پاسخ ورود برای «کاربر ناشناخته»، «شناسه بدفرمت» و «رمز اشتباه» باید **یکسان** (کد/پیام/وضعیت) و از نظر زمان‌بندی **مشابه** باشد تا شمارش کاربر (user enumeration) ممکن نشود؛ این ناهم‌خوانی در لایه Auth باید جذب شود، نه در Repository. → **جذب شد در F1-04** (ADR-007 A3 + شرط ۳ مالک: تست شباهت زمانی با تلرانس ≤ max(50ms، ۲۰٪) روی ≥۲۰ نمونه).
 - (تصمیمات مالک F1-04، ۱۴۰۵/۰۸/۳۰) Q1 ورود کارمند با `username@tenant-code` و راننده با تلفن (fan-out سرورساید)؛ Q2 rate-limit در Postgres پشت اینترفیس `RateLimiter` با TTL cleanup؛ Q3 outbox پیامک dev-only+localhost موکول به ساخت OtpMethod (§J)؛ Q4 رمز اولیه یک‌بارمصرف اپراتوری با انقضای کوتاه و تغییر اجباری؛ Q5 سیاست دو بخشی: کارمند ۱۲–۱۲۸ کاراکتر، راننده PIN عددی ۸–۲۰ رقم با blocklist. جزئیات کامل: ADR-007.
 - (تصمیم مالک، ۱۴۰۵/۰۸/۲۹) نشت `details` در پاسخ HTTP با گزینه A بسته شد: فیلتر فقط برای خطای <500 فیلد `details` را می‌فرستد؛ برای 5xx فقط در لاگ (همراه request id). پوشش: `http-exception.filter.test.ts`.
+- (F1-07 T01، **انتقال به T02–T07**) موارد اجباری از سناریوهای حمله:
+  - **AT-04:** اسکن boot فقط `role/roles/tenantId/carrierId/status/userId/createdBy` را می‌گیرد؛ کلیدهای `id`، `nameKey`، `version`، `createdAt/updatedAt/deletedAt` باید در **هر پنج** Schema با `.strict()` رد شوند (تست AT-04 هر سه سطح body/query/params).
+  - **AT-11:** insert فرزند (terminal / loader type) باید در همان تراکنش ردیف والد را `FOR UPDATE` قفل کند تا با soft-delete والد مسابقه نکند؛ تست هم‌زمانی delete-parent vs create-child.
+  - **STALE_VERSION / IN_USE:** `DomainError` هنوز سازنده‌ای برای این دو ندارد؛ در T04/T05 با status 409 و بدنهٔ عمومی (بدون child ids) اضافه شوند و در تست pin شوند.
+  - **نام:** سقف طول `name` روی **نام خام** قبل از نرمال‌سازی اعمال شود (NFC/فشرده‌سازی طول را تغییر می‌دهد)؛ `name_key <> ''` جدا در DB بررسی می‌شود.
+  - **expectedVersion:** Schema فقط عدد صحیح کانونیکال بپذیرد (`z.number().int()` یا تبدیل کنترل‌شده) تا `03`/`+3` fingerprint را در R5 تغییر ندهند.
 
 ## ۷. بدهی فنی و ریسک‌های شناخته‌شده
 
