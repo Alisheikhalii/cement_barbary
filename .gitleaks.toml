@@ -29,7 +29,7 @@ regex = '''(?i)(?:national[_-]?id|nationalcode|national_code|codemelli|code_mell
 secretGroup = 1
 keywords = ["national", "codemelli", "code_melli", "ملی"]
 
-[allowlist]
+[[allowlists]]
 description = "Generated, vendored and fixture paths"
 paths = [
   '''(^|/)node_modules/''',
@@ -47,4 +47,30 @@ regexes = [
   '''\+98912000000[0-9]''',
   '''0098912000000[0-9]''',
   '''IR0{24}''',
+]
+
+# F1-06 T06: a synthetic negative-case password literal lived in this test at
+# this commit only (the test now generates it at runtime). The value was never
+# a credential; this narrow allowlist keeps history readable without rewriting
+# it, and cannot hide findings in any other file or commit.
+[[allowlists]]
+description = "F1-06 T06 synthetic test password literal (test only, one commit)"
+condition = "AND"
+commits = ["5b6c81311b1bcb57ae3f64f6730ea896a2a519ce"]
+paths = ['''apps/api/test/auth-audit\.int\.test\.ts$''']
+
+# F1-06 T08/T09: the same synthetic fixtures (test phones in encrypted payloads,
+# one labeled national ID in a snapshot) were committed before the values moved
+# into the allowlisted range; those local commits are not rewritten.
+[[allowlists]]
+description = "F1-06 T08/T09 synthetic outbox/attack fixtures (local commits only)"
+condition = "AND"
+commits = [
+  "444e045937a65e95d60ec3f85c71f2f9effdf6b3",
+  "3b89fe0e7f73f9fa8ce4cbc65d85446f804c8c6a",
+]
+paths = [
+  '''apps/api/src/modules/outbox/outbox-worker\.test\.ts$''',
+  '''apps/api/test/outbox\.int\.test\.ts$''',
+  '''apps/api/test/f1-06-attacks\.int\.test\.ts$''',
 ]

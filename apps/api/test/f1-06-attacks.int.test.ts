@@ -14,6 +14,7 @@ import { OutboxWriter } from '../src/modules/outbox/outbox-writer.js';
 import { buildAad } from '../src/security/pii/pii-crypto.js';
 import { parseEnv } from '../src/config/env.js';
 import { createTenant, createUser, makeAppPool, ownerPool, testPii } from './setup/db.js';
+import { randomNationalId } from './setup/national-id.js';
 
 /**
  * F1-06 cross-cutting attack suite (T09): audit PII sweep, forged-tenant RLS
@@ -26,6 +27,7 @@ const PHONE = '09120000009';
 const RAW_IP = '198.51.100.7';
 const PASSWORD_MARKER = 'argon2id$v=19$forged-marker';
 const TOKEN_MARKER = 'refresh-token-secret-marker';
+const NATIONAL_ID = randomNationalId();
 
 let ctx: TenantContext;
 let tenantDb: TenantDb;
@@ -97,7 +99,7 @@ describe('F1-06 attack suite', () => {
           username: 'attacks.a',
           status: 'active',
           phone: PHONE,
-          nationalId: '0012345678',
+          nationalId: NATIONAL_ID,
           phoneEnc: Buffer.from(PASSWORD_MARKER),
           passwordHash: PASSWORD_MARKER,
           token: TOKEN_MARKER,
@@ -155,7 +157,7 @@ describe('F1-06 attack suite', () => {
       for (const secret of [
         PHONE,
         '9120000009',
-        '0012345678',
+        NATIONAL_ID,
         RAW_IP,
         PASSWORD_MARKER,
         TOKEN_MARKER,

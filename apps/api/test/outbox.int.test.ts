@@ -232,13 +232,13 @@ describe('outbox — producer', () => {
 
   it('O6: the payload is encrypted, row/tenant-bound and never plaintext', async () => {
     const dedupeKey = `enc-${uuidv7()}`;
-    await enqueue(tenantA, 'mock.echo', dedupeKey, { phone: '09120000013' });
+    await enqueue(tenantA, 'mock.echo', dedupeKey, { phone: '09120000001' });
     const id = await rowIdFor(tenantA, dedupeKey);
     const row = await outboxRow(id);
-    expect(row.payload_enc.toString('utf8')).not.toContain('09120000013');
+    expect(row.payload_enc.toString('utf8')).not.toContain('09120000001');
     expect(
       pii.decrypt(row.payload_enc, buildAad(tenantA, 'integration_outbox.payload_enc', id)),
-    ).toContain('09120000013');
+    ).toContain('09120000001');
     expect(() =>
       pii.decrypt(row.payload_enc, buildAad(tenantB, 'integration_outbox.payload_enc', id)),
     ).toThrow();
@@ -351,7 +351,7 @@ describe('outbox — failures, log hygiene and dead letters', () => {
     const dedupeKey = `poison-${uuidv7()}`;
     const secretPayload = 'super-secret-payload-value';
     const providerSecret = 'provider-said-secret-token-xyz';
-    await enqueue(tenantA, 'mock.echo', dedupeKey, { phone: '09120000014', secret: secretPayload });
+    await enqueue(tenantA, 'mock.echo', dedupeKey, { phone: '09120000002', secret: secretPayload });
     const id = await rowIdFor(tenantA, dedupeKey);
 
     const failing: OutboxAdapter = {
@@ -379,7 +379,7 @@ describe('outbox — failures, log hygiene and dead letters', () => {
     const logs = logLines.join('\n');
     expect(logs).toContain('OUTBOX_SEND_FAILED');
     expect(logs).toContain('OUTBOX_DEAD_LETTER');
-    for (const secret of [secretPayload, '09120000014', providerSecret, 'provider-said']) {
+    for (const secret of [secretPayload, '09120000002', providerSecret, 'provider-said']) {
       expect(logs, secret).not.toContain(secret);
     }
     // The sanitized event carries only structural fields.

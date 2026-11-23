@@ -13,10 +13,18 @@ Anything committed can be read by anyone and stays in Git history.
    - SHEBA: `IR` followed by 24 zeros
    - National ID: generate in tests at runtime; do not hard-code 10-digit values next to a
      `national_id` label.
-3. **Secrets** live only in `.env` (git-ignored) or the server's secret manager. `.env.example` holds
+3. **Scoped history allowlists (F1-06).** Two narrowly scoped `[[allowlists]]` entries exist because
+   synthetic fixtures were committed before they were moved to the allowed forms: one for the T06
+   synthetic negative-case password literal (`5b6c813`, auth-audit test only), one for the T08/T09
+   outbox/attack test fixtures (`444e045`, `3b89fe0`, exact test files only). Each uses
+   `condition = "AND"` with exact commits and paths; there is no broad numeric or directory pattern.
+   A negative control is part of the T09 close-out: a realistic value outside those paths is still
+   detected (verified with a temporary file that was removed). New entries need the same scoping and
+   an owner decision.
+4. **Secrets** live only in `.env` (git-ignored) or the server's secret manager. `.env.example` holds
    placeholders only.
-4. **Before every push:** run the full-history Gitleaks scan (command below). A finding blocks the push.
-5. If a real secret or personal record was committed: stop, tell the owner, rotate the secret.
+5. **Before every push:** run the full-history Gitleaks scan (command below). A finding blocks the push.
+6. If a real secret or personal record was committed: stop, tell the owner, rotate the secret.
    Rewriting public history does not remove copies that were already fetched.
 
 ## Scan command (Docker, read-only mount)

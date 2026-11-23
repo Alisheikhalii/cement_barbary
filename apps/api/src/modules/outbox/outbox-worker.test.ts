@@ -166,7 +166,7 @@ describe('outbox worker', () => {
 
   it('reports a dead letter once with sanitized fields and no payload', async () => {
     const tenantId = uuidv7();
-    const row = encryptedRow(tenantId, '{"phone":"09120000015"}');
+    const row = encryptedRow(tenantId, '{"phone":"09120000003"}');
     const store = storeStub({
       listActiveTenants: async () => [{ id: tenantId, code: 'a' }],
       claim: async () => [row],
@@ -191,7 +191,7 @@ describe('outbox worker', () => {
       topic: 'mock.echo',
       errorCode: 'ADAPTER_FAILED',
     });
-    expect(JSON.stringify(deadEvent)).not.toContain('09120000015');
+    expect(JSON.stringify(deadEvent)).not.toContain('09120000003');
     expect(JSON.stringify(log.warn.mock.calls)).not.toContain('provider-secret-text');
   });
 

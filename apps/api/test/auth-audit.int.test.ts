@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Pool } from 'pg';
@@ -21,6 +21,8 @@ import { buildAuthApp } from './setup/auth-app.js';
 const STAFF_PW = 'Correct-Horse!Battery9';
 const STAFF_NEW_PW = 'An0ther-Strong!Passw0rd';
 const DRIVER_PIN = '9182736450';
+/** Synthetic wrong password for the negative login case (never a real credential). */
+const WRONG_STAFF_PW = randomBytes(18).toString('base64url');
 
 let app: NestExpressApplication;
 let auth: AuthService;
@@ -131,7 +133,7 @@ describe('auth events', () => {
     });
     const before = await auditRows('auth.login.success');
     await expect(
-      auth.login({ identifier: `${username}@${tenantCode}`, password: 'Wrong-Passphrase-1' }, {}),
+      auth.login({ identifier: `${username}@${tenantCode}`, password: WRONG_STAFF_PW }, {}),
     ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
     const after = await auditRows('auth.login.success');
     expect(after).toHaveLength(before.length);
