@@ -64,7 +64,7 @@ Global tables (no `tenant_id`, each with a written reason — ADR-006 U14):
   account-dimension key (T07, recorded in the T05 report).
 
 Tenant-owned (template above): `users`, `user_roles`, `user_credentials`,
-`auth_sessions`, `audit_logs`, `idempotency_keys`.
+`auth_sessions`, `audit_logs`, `idempotency_keys`, `integration_outbox`.
 
 `audit_logs` is **append-only** (ADR-009 L3, migrations `0011`/`0012`):
 `bitabar_app` has `SELECT, INSERT` only; `UPDATE/DELETE/TRUNCATE/TRIGGER/
@@ -81,10 +81,15 @@ IDEMPOTENCY_RLS_INVALID` / `IDEMPOTENCY_POLICY_INVALID` /
 `IDEMPOTENCY_GRANTS_INVALID`) when the RLS flag, the two policies or the
 privilege set did not stick.
 
-Planned tenant-owned table (F1-06, `docs/plan/F1-06.md`; active only from its
-migration): `integration_outbox` (no DELETE/TRUNCATE for the runtime role,
-ADR-010 L13). The U14 guard covers it automatically because it carries
-`tenant_id` + the template; the definer catalog stays at 6.
+`integration_outbox` (`0015`/`0016`, ADR-010 L12–L14) uses the template, and
+`DELETE`/`TRUNCATE` are revoked from `bitabar_app`: the worker enqueues, reads,
+claims and CAS-updates, but sent rows are retained until the F8 retention
+decision (owner purge). `0016` fails closed (`OUTBOX_RLS_INVALID` /
+`OUTBOX_POLICY_INVALID` / `OUTBOX_GRANTS_INVALID`).
+
+Planned tenant-owned table (active only from its migration): none in F1-06. The
+U14 guard covers every tenant-owned table automatically; the definer catalog
+stays at 6.
 
 Special write rules:
 

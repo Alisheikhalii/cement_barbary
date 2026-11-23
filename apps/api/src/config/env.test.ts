@@ -260,3 +260,82 @@ describe('parseEnv AUTH_TOKEN_SECRET (ADR-007 A7/A13)', () => {
     );
   });
 });
+
+describe('parseEnv outbox flags (ADR-010 L13/L14, owner CP5)', () => {
+  it('defaults both flags off and parses worker tunables', () => {
+    const config = parseEnv({ ...BASE_ENV });
+    expect(config.outbox).toEqual({
+      workerEnabled: false,
+      mockEnabled: false,
+      pollMs: 1000,
+      batchSize: 10,
+      leaseSeconds: 60,
+      maxAttempts: 5,
+      adapterTimeoutMs: 5000,
+      backoffBaseSeconds: 5,
+    });
+  });
+
+  it('requires the adapter timeout to be strictly below the lease', () => {
+    expect(() =>
+      parseEnv({
+        ...BASE_ENV,
+        OUTBOX_LEASE_SECONDS: '5',
+        OUTBOX_BATCH_SIZE: '1',
+        OUTBOX_ADAPTER_TIMEOUT_MS: '5000',
+      }),
+    ).toThrow(/OUTBOX_ADAPTER_TIMEOUT_MS: must be strictly below/);
+    expect(() =>
+      parseEnv({
+        ...BASE_ENV,
+        OUTBOX_LEASE_SECONDS: '5',
+        OUTBOX_BATCH_SIZE: '1',
+        OUTBOX_ADAPTER_TIMEOUT_MS: '4999',
+      }),
+    ).not.toThrow();
+  });
+
+  it('requires the whole sequential batch to fit inside one lease', () => {
+    // A batch is delivered one row at a time, so batch × timeout < lease.
+    expect(() =>
+      parseEnv({
+        ...BASE_ENV,
+        OUTBOX_LEASE_SECONDS: '30',
+        OUTBOX_BATCH_SIZE: '10',
+        OUTBOX_ADAPTER_TIMEOUT_MS: '5000',
+      }),
+    ).toThrow(/OUTBOX_LEASE_SECONDS: must exceed OUTBOX_BATCH_SIZE/);
+    expect(() =>
+      parseEnv({
+        ...BASE_ENV,
+        OUTBOX_LEASE_SECONDS: '60',
+        OUTBOX_BATCH_SIZE: '10',
+        OUTBOX_ADAPTER_TIMEOUT_MS: '5000',
+      }),
+    ).not.toThrow();
+  });
+
+  it('refuses the worker flag in production', () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, NODE_ENV: 'production', OUTBOX_WORKER_ENABLED: 'true' }),
+    ).toThrow(/OUTBOX_WORKER_ENABLED: must be false in production/);
+  });
+
+  it('refuses the mock adapter flag in production', () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, NODE_ENV: 'production', ADAPTER_MOCK_ENABLED: 'true' }),
+    ).toThrow(/ADAPTER_MOCK_ENABLED: must be false in production/);
+  });
+
+  it('allows both flags off in production and both flags on in development', () => {
+    expect(() => parseEnv({ ...BASE_ENV, NODE_ENV: 'production' })).not.toThrow();
+    const dev = parseEnv({
+      ...BASE_ENV,
+      NODE_ENV: 'development',
+      OUTBOX_WORKER_ENABLED: 'true',
+      ADAPTER_MOCK_ENABLED: 'true',
+    });
+    expect(dev.outbox.workerEnabled).toBe(true);
+    expect(dev.outbox.mockEnabled).toBe(true);
+  });
+});

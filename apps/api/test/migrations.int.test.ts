@@ -15,14 +15,14 @@ describe('migrations (integration)', () => {
     const journal = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(journal.rows[0]?.n).toBe(15);
+    expect(journal.rows[0]?.n).toBe(17);
 
     // Second run: no error, no new journal rows.
     await expect(runMigrations(inject('ownerUrl'))).resolves.toBeUndefined();
     const again = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(again.rows[0]?.n).toBe(15);
+    expect(again.rows[0]?.n).toBe(17);
   });
 
   it('bitabar_app has no superuser, bypass-rls, create-role or login-via-git privileges', async () => {
@@ -50,7 +50,7 @@ describe('migrations (integration)', () => {
   it('tenant-owned tables have row-level security enabled (auth and audit tables included)', async () => {
     const result = await ownerPool().query<{ relname: string; relrowsecurity: boolean }>(
       `SELECT relname, relrowsecurity FROM pg_class
-       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials,audit_logs,idempotency_keys}')
+       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials,audit_logs,idempotency_keys,integration_outbox}')
          AND relnamespace = 'public'::regnamespace
        ORDER BY relname`,
     );
@@ -58,6 +58,7 @@ describe('migrations (integration)', () => {
       { relname: 'audit_logs', relrowsecurity: true },
       { relname: 'auth_sessions', relrowsecurity: true },
       { relname: 'idempotency_keys', relrowsecurity: true },
+      { relname: 'integration_outbox', relrowsecurity: true },
       { relname: 'tenants', relrowsecurity: true },
       { relname: 'user_credentials', relrowsecurity: true },
       { relname: 'user_roles', relrowsecurity: true },
@@ -134,7 +135,10 @@ describe('migrations (integration)', () => {
          ('audit_logs', 'DELETE'), ('audit_logs', 'TRUNCATE'),
          ('idempotency_keys', 'SELECT'), ('idempotency_keys', 'INSERT'),
          ('idempotency_keys', 'UPDATE'), ('idempotency_keys', 'DELETE'),
-         ('idempotency_keys', 'TRUNCATE')
+         ('idempotency_keys', 'TRUNCATE'),
+         ('integration_outbox', 'SELECT'), ('integration_outbox', 'INSERT'),
+         ('integration_outbox', 'UPDATE'), ('integration_outbox', 'DELETE'),
+         ('integration_outbox', 'TRUNCATE')
        ) AS checks(t, p)
        ORDER BY t, p`,
     );
@@ -160,6 +164,12 @@ describe('migrations (integration)', () => {
       { t: 'idempotency_keys', p: 'SELECT', allowed: true },
       { t: 'idempotency_keys', p: 'TRUNCATE', allowed: false },
       { t: 'idempotency_keys', p: 'UPDATE', allowed: true },
+      // Outbox (ADR-010 L13): claim/CAS only; sent rows are retained (owner purge).
+      { t: 'integration_outbox', p: 'DELETE', allowed: false },
+      { t: 'integration_outbox', p: 'INSERT', allowed: true },
+      { t: 'integration_outbox', p: 'SELECT', allowed: true },
+      { t: 'integration_outbox', p: 'TRUNCATE', allowed: false },
+      { t: 'integration_outbox', p: 'UPDATE', allowed: true },
       { t: 'roles', p: 'DELETE', allowed: false },
       { t: 'roles', p: 'INSERT', allowed: false },
       { t: 'roles', p: 'SELECT', allowed: true },

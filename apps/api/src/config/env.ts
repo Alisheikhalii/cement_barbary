@@ -109,6 +109,22 @@ const envSchema = z
     IDEMPOTENCY_HANDLER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(8000),
     // Stored result lifetime (GUIDELINES §5.4: 24 h).
     IDEMPOTENCY_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+    // --- F1-06 T08 outbox (ADR-010 L12–L14) ---
+    // Off by default; production refuses both flags (owner CP5 change 6 / F8).
+    OUTBOX_WORKER_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    ADAPTER_MOCK_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    OUTBOX_POLL_MS: z.coerce.number().int().min(100).max(60000).default(1000),
+    OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+    OUTBOX_LEASE_SECONDS: z.coerce.number().int().min(5).max(600).default(60),
+    OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+    OUTBOX_ADAPTER_TIMEOUT_MS: z.coerce.number().int().min(100).max(30000).default(5000),
+    OUTBOX_BACKOFF_BASE_SECONDS: z.coerce.number().int().min(1).max(3600).default(5),
   })
   .superRefine((data, ctx) => {
     // Fields can be un-decoded when their own validation already failed.
@@ -149,6 +165,47 @@ const envSchema = z
         path: ['IDEMPOTENCY_LOCK_TIMEOUT_MS'],
         message: 'must be below IDEMPOTENCY_HANDLER_TIMEOUT_MS',
       });
+    }
+    // An adapter call must finish well before its lease expires, otherwise a
+    // second worker reclaims the row while the first send is still in flight
+    // (owner CP5 change 4).
+    if (data.OUTBOX_ADAPTER_TIMEOUT_MS >= data.OUTBOX_LEASE_SECONDS * 1000) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['OUTBOX_ADAPTER_TIMEOUT_MS'],
+        message: 'must be strictly below OUTBOX_LEASE_SECONDS × 1000',
+      });
+    }
+    // A batch is delivered sequentially, so the whole batch must fit inside
+    // one lease; otherwise a later row's lease expires before its send starts
+    // and a second worker reclaims it mid-flight (T08 review MEDIUM 2).
+    if (
+      data.OUTBOX_BATCH_SIZE * data.OUTBOX_ADAPTER_TIMEOUT_MS >=
+      data.OUTBOX_LEASE_SECONDS * 1000
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['OUTBOX_LEASE_SECONDS'],
+        message: 'must exceed OUTBOX_BATCH_SIZE × OUTBOX_ADAPTER_TIMEOUT_MS (seconds × 1000)',
+      });
+    }
+    // The poller and the mock provider are development switches. A production
+    // process must not start with either (owner CP5; F8 revisits explicitly).
+    if (data.NODE_ENV === 'production') {
+      if (data.OUTBOX_WORKER_ENABLED === true) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['OUTBOX_WORKER_ENABLED'],
+          message: 'must be false in production (F8 enables it explicitly)',
+        });
+      }
+      if (data.ADAPTER_MOCK_ENABLED === true) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['ADAPTER_MOCK_ENABLED'],
+          message: 'must be false in production (the mock adapter is refused)',
+        });
+      }
     }
   });
 
@@ -207,6 +264,17 @@ export interface AppConfig {
     /** Stored result lifetime. */
     ttlHours: number;
   };
+  /** F1-06 outbox worker and adapter (ADR-010 L12–L14). */
+  outbox: {
+    workerEnabled: boolean;
+    mockEnabled: boolean;
+    pollMs: number;
+    batchSize: number;
+    leaseSeconds: number;
+    maxAttempts: number;
+    adapterTimeoutMs: number;
+    backoffBaseSeconds: number;
+  };
 }
 
 export function parseEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -257,6 +325,16 @@ export function parseEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
       lockTimeoutMs: parsed.data.IDEMPOTENCY_LOCK_TIMEOUT_MS,
       handlerTimeoutMs: parsed.data.IDEMPOTENCY_HANDLER_TIMEOUT_MS,
       ttlHours: parsed.data.IDEMPOTENCY_TTL_HOURS,
+    },
+    outbox: {
+      workerEnabled: parsed.data.OUTBOX_WORKER_ENABLED,
+      mockEnabled: parsed.data.ADAPTER_MOCK_ENABLED,
+      pollMs: parsed.data.OUTBOX_POLL_MS,
+      batchSize: parsed.data.OUTBOX_BATCH_SIZE,
+      leaseSeconds: parsed.data.OUTBOX_LEASE_SECONDS,
+      maxAttempts: parsed.data.OUTBOX_MAX_ATTEMPTS,
+      adapterTimeoutMs: parsed.data.OUTBOX_ADAPTER_TIMEOUT_MS,
+      backoffBaseSeconds: parsed.data.OUTBOX_BACKOFF_BASE_SECONDS,
     },
   };
 }

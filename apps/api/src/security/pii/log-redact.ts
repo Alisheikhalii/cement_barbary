@@ -35,6 +35,8 @@ const CODE_KEY_ALLOWLIST = new Set([
   'reason_code',
   'reason-code',
   'x-reason-code',
+  // Worker lifecycle/security event names (OUTBOX_*); an event CODE, not a secret.
+  'eventcode',
   'x_reason_code',
 ]);
 

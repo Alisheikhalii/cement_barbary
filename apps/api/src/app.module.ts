@@ -11,6 +11,7 @@ import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './db/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { OutboxModule } from './modules/outbox/outbox.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PiiModule } from './security/pii/pii.module.js';
 import { redactPiiLogObject } from './security/pii/log-redact.js';
@@ -54,6 +55,9 @@ import { AuthzModule } from './security/authz/authz.module.js';
     // AFTER AuthzModule: its transaction is outer to (or flagged through) the
     // sensitive audit so a failed handler still gets its best-effort row.
     IdempotencyModule,
+    // Producer for every external side effect; the poller/mock are flag-gated
+    // and refused in production.
+    OutboxModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

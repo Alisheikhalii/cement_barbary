@@ -139,13 +139,25 @@ IDEMPOTENCY_TIMEOUT` and stores no key.
 ## Outbox — adapter contract
 
 - Enqueue inside the business transaction with `OutboxWriter.enqueue({ topic, dedupeKey, payload })`. Duplicate
-  `(tenant, topic, dedupeKey)` is a no-op.
+  `(tenant, topic, dedupeKey)` is a no-op. The payload is encrypted (AAD
+  `tenant:integration_outbox.payload_enc:<rowId>`) and capped at 64 KiB; it may carry a phone number.
+- **Delivery is at-least-once with no global ordering guarantee.** Workers run concurrently, retries move a row
+  back in time, and topics can interleave. A consumer needing order must carry a sequence/version in the payload
+  and order at the destination.
 - The adapter is called outside any transaction with a timeout; it receives `outbox.id` as its idempotency key and
-  **must** dedupe on it (the mock enforces this).
+  **must** dedupe on it (the mock enforces this). `OUTBOX_ADAPTER_TIMEOUT_MS` must be strictly below
+  `OUTBOX_LEASE_SECONDS × 1000` — startup fails otherwise, so a send can never outlive its lease by design.
+- Each tick, per tenant: a **pre-claim sweep** moves an expired lease whose `attempts >= max_attempts` to `dead`
+  (`LEASE_EXPIRED_MAX_ATTEMPTS`); the claim itself refuses `attempts >= max_attempts`, so one poison row cannot
+  block the batch. Tenants are processed in isolation (try/catch per tenant, code-only log).
 - Retries use exponential backoff with jitter; `dead` after `max_attempts`. `last_error_code` is a stable code —
-  never provider text, never a payload value.
-- Worker flags: `OUTBOX_WORKER_ENABLED` (default off), `OUTBOX_POLL_MS`, `OUTBOX_MAX_ATTEMPTS`,
-  `ADAPTER_MOCK_ENABLED`. Real providers land later behind the same interface with a feature flag (GUIDELINES §12).
+  never provider text, never a payload value. Every `dead` transition emits `{ eventCode: OUTBOX_DEAD_LETTER,
+outboxId, topic, errorCode, tenantId }` and increments the metrics seam; no payload is logged. `eventCode` is on
+  the log allowlist so these operational events stay visible while OTP-like `*code` keys remain redacted.
+- Worker flags: `OUTBOX_WORKER_ENABLED` (default off), `OUTBOX_POLL_MS`, `OUTBOX_BATCH_SIZE`,
+  `OUTBOX_LEASE_SECONDS`, `OUTBOX_MAX_ATTEMPTS`, `OUTBOX_BACKOFF_BASE_SECONDS`, `ADAPTER_MOCK_ENABLED`. A
+  **production** process refuses the worker and the mock flag (config validation and boot provider check). Real
+  providers land later behind the same interface with a feature flag (GUIDELINES §12).
 
 ## Retention
 

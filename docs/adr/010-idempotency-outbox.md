@@ -76,19 +76,33 @@ expires_at < now()` takes it over and the handler runs as a new request. When tw
   and the unique `(tenant_id, topic, dedupe_key)` makes a duplicate enqueue a no-op.
 - **L13 — Postgres poller (owner Q3).** A Nest module behind `OUTBOX_WORKER_ENABLED` (off by default in test and
   production until F8). Each tick iterates active tenants through the existing `app.list_tenants()` and, per tenant,
-  claims a batch with `… WHERE (status = 'pending' AND next_attempt_at <= now()) OR (status = 'processing' AND
-locked_until < now()) ORDER BY next_attempt_at FOR UPDATE SKIP LOCKED LIMIT n`, marks `processing` with
+  first runs a **pre-claim dead sweep** (`status='processing' AND locked_until < now() AND attempts >=
+max_attempts` → `dead`, `last_error_code='LEASE_EXPIRED_MAX_ATTEMPTS'`), then claims a batch with `… WHERE
+attempts < max_attempts AND ((status = 'pending' AND next_attempt_at <= now()) OR (status = 'processing' AND
+locked_until < now())) ORDER BY next_attempt_at FOR UPDATE SKIP LOCKED LIMIT n`, marks `processing` with
   `lock_token` and `locked_until`, commits, calls the adapter **outside** any transaction with a timeout, and
   CAS-updates on `(id, lock_token)` to `sent` or back to `pending` with exponential backoff and jitter — `dead`
-  after `max_attempts`. The lease (`locked_until`) recovers a worker that dies mid-send. `last_error_code` is a
-  stable sanitized code; provider text is never stored or logged. **No new `SECURITY DEFINER` function** — the loop
-  uses the existing tenant list function and runs inside `TenantDb` per tenant.
+  after `max_attempts`. **The sweep and the `attempts < max_attempts` predicate mean `attempts` can never exceed
+  the ceiling and one poison row can never break the tenant's batch (owner CP5 change 1).** Each tenant is wrapped
+  in try/catch: a failing or suspended tenant never stops the others, and the log carries a structural event code
+  only (owner CP5 change 2). The lease (`locked_until`) recovers a worker that dies mid-send. `last_error_code` is
+  a stable sanitized code; provider text is never stored or logged. **No new `SECURITY DEFINER` function** — the
+  loop uses the existing tenant list function and runs inside `TenantDb` per tenant.
+  - **Every transition to `dead` emits a sanitized event** (`eventCode: OUTBOX_DEAD_LETTER`, topic, outbox id,
+    error code, tenant id — no payload) and increments the outbox metrics seam, so a dead letter is never silent
+    (owner CP5 change 6). `OUTBOX_ADAPTER_TIMEOUT_MS` must be strictly below `OUTBOX_LEASE_SECONDS × 1000`;
+    startup fails otherwise (owner CP5 change 4). A production process refuses `OUTBOX_WORKER_ENABLED=true` and
+    `ADAPTER_MOCK_ENABLED=true`, at config validation and again in a boot provider check (owner CP5).
   - Rejected: BullMQ/Redis now (a second runtime dependency and still needs this table for transactional enqueue;
     Redis arrives in F3/F5 for queue locks and the allocation job, behind the same dispatcher interface).
-- **L14 — At-least-once with no duplicate side effects.** Delivery can repeat after a crash between send and mark.
-  The adapter receives `outbox.id` as its idempotency key; `MockAdapter` (topic `mock.echo`, flag
-  `ADAPTER_MOCK_ENABLED`) dedupes by it. A test kills the worker between send and mark and asserts exactly one
-  effect. Real providers must implement the same contract (documented in `docs/security/audit.md` §Outbox).
+- **L14 — At-least-once with no duplicate side effects and no ordering guarantee.** Delivery can repeat after a
+  crash between send and mark, and **there is no global ordering guarantee**: workers run concurrently, a retry
+  moves a row back in time, and a later-enqueued topic may be delivered first. A consumer that needs order must
+  carry its own sequence/version in the payload and order at the destination (ADR-010 owner CP5 change 3).
+  The adapter receives
+  `outbox.id` as its idempotency key; `MockAdapter` (topic `mock.echo`, flag `ADAPTER_MOCK_ENABLED`) dedupes by it.
+  A test kills the worker between send and mark and asserts exactly one effect. Real providers must implement the
+  same contract (documented in `docs/security/audit.md` §Outbox).
 
 **Owner conditions:**
 

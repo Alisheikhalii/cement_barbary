@@ -11,3 +11,4 @@ export * from './auth-sessions.js';
 export * from './auth-rate-limits.js';
 export * from './audit-logs.js';
 export * from './idempotency-keys.js';
+export * from './integration-outbox.js';
