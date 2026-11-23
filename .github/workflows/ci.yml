@@ -90,3 +90,8 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pin the engine to the version validated locally (F1-06 T09): the
+          # action's default build predates `[[allowlists]]`, so it silently
+          # ignored the scoped allowlists and scanned the whole push range.
+          GITLEAKS_VERSION: 8.28.0
+          GITLEAKS_CONFIG: .gitleaks.toml
