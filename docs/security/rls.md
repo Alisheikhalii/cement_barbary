@@ -87,9 +87,14 @@ claims and CAS-updates, but sent rows are retained until the F8 retention
 decision (owner purge). `0016` fails closed (`OUTBOX_RLS_INVALID` /
 `OUTBOX_POLICY_INVALID` / `OUTBOX_GRANTS_INVALID`).
 
-Planned tenant-owned table (active only from its migration): none in F1-06. The
-U14 guard covers every tenant-owned table automatically; the definer catalog
-stays at 6.
+Planned tenant-owned tables (F1-07, ADR-011; active only from their migration):
+`destinations`, `halls`, `hall_terminals`, `loader_type_groups`, `loader_types`.
+Migration `0017` creates them as generated DDL; `0018` applies this template to
+all five, revokes `DELETE`/`TRUNCATE` from `bitabar_app` (soft delete only) and
+fails closed (`BASE_RLS_INVALID` / `BASE_POLICY_INVALID` / `BASE_GRANTS_INVALID`)
+when the RLS flag, the isolation policy or the privilege set did not stick. No
+function and no trigger is added, so the definer catalog stays at 6. The U14
+guard covers every tenant-owned table automatically, including these.
 
 Special write rules:
 
