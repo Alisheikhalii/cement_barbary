@@ -2,7 +2,7 @@
 
 ## ۱. وضعیت فعلی
 
-- فاز فعلی: **F1 — F1-07 در حال اجراست** | Commitهای F1-07: `b4f45e0` (T00)، `5852fa2` (T01)، `e2e0b43` (T02)، T03 (همین Commit: schemaهای داده پایه + `0017`/`0018` + تست‌ها). هیچ Push/Tag نشده است.
+- فاز فعلی: **F1 — F1-07 در حال اجراست** | Commitهای F1-07: `b4f45e0` (T00)، `5852fa2` (T01)، `e2e0b43` (T02)، `3cc1cf1` (T03: schemaهای داده پایه + `0017`/`0018` + تست‌ها). هیچ Push/Tag نشده است.
 - فاز فعلی (F1-06): **F1 — F1-06 کامل و منتشر شد؛ Tag معتبر `v0.1.7` روی `e2c8c25` و CI سبز (run 45180863770)** | Commitهای F1-06: `8460429` (T04)، `f4c0a27` (T05)، `5b6c813` (T06)، `fb6a58f` (T07)، `444e045` (T08)، `3b89fe0` (T09)، `eb54b4b` (fixture allowlist)، `e2c8c25` (CI gitleaks pin). **توجه:** Tag `v0.1.6` (روی `eb54b4b`) Secret scan قرمز دارد و معتبر نیست؛ `v0.1.7` تگ بسته‌شدن معتبر F1-06 است. **flake guard:** تصمیم مالک — ۱۳ اجرای کامل سبز (۲۲ فایل/۲۲۸ تست) + CI به‌عنوان اجرای مستقل؛ دو flake تکراری (auth-rate-limit 50-way، auth.e2e CAS) برای رفع در F1-07 T01 یا F7 ثبت شدند. بازبینی امنیتی نهایی: APPROVE بدون HIGH.
 - CI: **سبز** (run 45041881233 روی main @ 250142d: Secret scan، Lint/typecheck/test/build/audit، Integration tests، Migrations in sync، Docker Compose؛ job «Commit messages» skipped) | تاریخ آخرین به‌روزرسانی: ۱۴۰۵/۰۹/۰۲
 - ریپو: `github.com/Alisheikhalii/cement_barbary` (شاخه `main`)
