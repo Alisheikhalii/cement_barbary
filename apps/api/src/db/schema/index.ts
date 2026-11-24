@@ -12,3 +12,8 @@ export * from './auth-rate-limits.js';
 export * from './audit-logs.js';
 export * from './idempotency-keys.js';
 export * from './integration-outbox.js';
+export * from './destinations.js';
+export * from './halls.js';
+export * from './hall-terminals.js';
+export * from './loader-type-groups.js';
+export * from './loader-types.js';

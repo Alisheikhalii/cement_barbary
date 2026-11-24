@@ -15,14 +15,14 @@ describe('migrations (integration)', () => {
     const journal = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(journal.rows[0]?.n).toBe(17);
+    expect(journal.rows[0]?.n).toBe(19);
 
     // Second run: no error, no new journal rows.
     await expect(runMigrations(inject('ownerUrl'))).resolves.toBeUndefined();
     const again = await owner.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations',
     );
-    expect(again.rows[0]?.n).toBe(17);
+    expect(again.rows[0]?.n).toBe(19);
   });
 
   it('bitabar_app has no superuser, bypass-rls, create-role or login-via-git privileges', async () => {
@@ -50,20 +50,66 @@ describe('migrations (integration)', () => {
   it('tenant-owned tables have row-level security enabled (auth and audit tables included)', async () => {
     const result = await ownerPool().query<{ relname: string; relrowsecurity: boolean }>(
       `SELECT relname, relrowsecurity FROM pg_class
-       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials,audit_logs,idempotency_keys,integration_outbox}')
+       WHERE relname = ANY ('{tenants,users,user_roles,auth_sessions,user_credentials,audit_logs,idempotency_keys,integration_outbox,destinations,halls,hall_terminals,loader_type_groups,loader_types}')
          AND relnamespace = 'public'::regnamespace
        ORDER BY relname`,
     );
     expect(result.rows).toEqual([
       { relname: 'audit_logs', relrowsecurity: true },
       { relname: 'auth_sessions', relrowsecurity: true },
+      { relname: 'destinations', relrowsecurity: true },
+      { relname: 'hall_terminals', relrowsecurity: true },
+      { relname: 'halls', relrowsecurity: true },
       { relname: 'idempotency_keys', relrowsecurity: true },
       { relname: 'integration_outbox', relrowsecurity: true },
+      { relname: 'loader_type_groups', relrowsecurity: true },
+      { relname: 'loader_types', relrowsecurity: true },
       { relname: 'tenants', relrowsecurity: true },
       { relname: 'user_credentials', relrowsecurity: true },
       { relname: 'user_roles', relrowsecurity: true },
       { relname: 'users', relrowsecurity: true },
     ]);
+  });
+
+  it('base-data tables have exactly one permissive FOR ALL policy and no triggers (version is app-code)', async () => {
+    const tables = [
+      'destinations',
+      'halls',
+      'hall_terminals',
+      'loader_type_groups',
+      'loader_types',
+    ];
+    const policies = await ownerPool().query<{
+      tablename: string;
+      policyname: string;
+      permissive: string;
+      cmd: string;
+    }>(
+      `SELECT tablename, policyname, permissive, cmd FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = ANY($1::text[])
+        ORDER BY tablename`,
+      [tables],
+    );
+    expect(policies.rows.map((r) => [r.tablename, r.policyname, r.permissive, r.cmd])).toEqual([
+      ['destinations', 'destinations_tenant_isolation', 'PERMISSIVE', 'ALL'],
+      ['hall_terminals', 'hall_terminals_tenant_isolation', 'PERMISSIVE', 'ALL'],
+      ['halls', 'halls_tenant_isolation', 'PERMISSIVE', 'ALL'],
+      ['loader_type_groups', 'loader_type_groups_tenant_isolation', 'PERMISSIVE', 'ALL'],
+      ['loader_types', 'loader_types_tenant_isolation', 'PERMISSIVE', 'ALL'],
+    ]);
+
+    // No version trigger: every write increments `version` in the repository CAS,
+    // and no deferrable trigger can reorder or duplicate that increment.
+    const triggers = await ownerPool().query<{ n: number }>(
+      `SELECT count(*)::int AS n
+         FROM pg_trigger tg
+         JOIN pg_class c ON c.oid = tg.tgrelid
+        WHERE c.relnamespace = 'public'::regnamespace
+          AND c.relname = ANY($1::text[])
+          AND NOT tg.tgisinternal`,
+      [tables],
+    );
+    expect(triggers.rows[0]?.n).toBe(0);
   });
 
   it('roles holds exactly the 3 catalog rows (ADR-006 U1, trimmed by 0004 in T05b)', async () => {
@@ -138,7 +184,18 @@ describe('migrations (integration)', () => {
          ('idempotency_keys', 'TRUNCATE'),
          ('integration_outbox', 'SELECT'), ('integration_outbox', 'INSERT'),
          ('integration_outbox', 'UPDATE'), ('integration_outbox', 'DELETE'),
-         ('integration_outbox', 'TRUNCATE')
+         ('integration_outbox', 'TRUNCATE'),
+         ('destinations', 'SELECT'), ('destinations', 'INSERT'), ('destinations', 'UPDATE'),
+         ('destinations', 'DELETE'), ('destinations', 'TRUNCATE'),
+         ('halls', 'SELECT'), ('halls', 'INSERT'), ('halls', 'UPDATE'),
+         ('halls', 'DELETE'), ('halls', 'TRUNCATE'),
+         ('hall_terminals', 'SELECT'), ('hall_terminals', 'INSERT'), ('hall_terminals', 'UPDATE'),
+         ('hall_terminals', 'DELETE'), ('hall_terminals', 'TRUNCATE'),
+         ('loader_type_groups', 'SELECT'), ('loader_type_groups', 'INSERT'),
+         ('loader_type_groups', 'UPDATE'), ('loader_type_groups', 'DELETE'),
+         ('loader_type_groups', 'TRUNCATE'),
+         ('loader_types', 'SELECT'), ('loader_types', 'INSERT'), ('loader_types', 'UPDATE'),
+         ('loader_types', 'DELETE'), ('loader_types', 'TRUNCATE')
        ) AS checks(t, p)
        ORDER BY t, p`,
     );
@@ -159,6 +216,22 @@ describe('migrations (integration)', () => {
       { t: 'auth_sessions', p: 'INSERT', allowed: true },
       { t: 'auth_sessions', p: 'SELECT', allowed: true },
       { t: 'auth_sessions', p: 'UPDATE', allowed: true },
+      // Base data (ADR-011 B10): soft delete only; version is app-code.
+      { t: 'destinations', p: 'DELETE', allowed: false },
+      { t: 'destinations', p: 'INSERT', allowed: true },
+      { t: 'destinations', p: 'SELECT', allowed: true },
+      { t: 'destinations', p: 'TRUNCATE', allowed: false },
+      { t: 'destinations', p: 'UPDATE', allowed: true },
+      { t: 'hall_terminals', p: 'DELETE', allowed: false },
+      { t: 'hall_terminals', p: 'INSERT', allowed: true },
+      { t: 'hall_terminals', p: 'SELECT', allowed: true },
+      { t: 'hall_terminals', p: 'TRUNCATE', allowed: false },
+      { t: 'hall_terminals', p: 'UPDATE', allowed: true },
+      { t: 'halls', p: 'DELETE', allowed: false },
+      { t: 'halls', p: 'INSERT', allowed: true },
+      { t: 'halls', p: 'SELECT', allowed: true },
+      { t: 'halls', p: 'TRUNCATE', allowed: false },
+      { t: 'halls', p: 'UPDATE', allowed: true },
       { t: 'idempotency_keys', p: 'DELETE', allowed: true },
       { t: 'idempotency_keys', p: 'INSERT', allowed: true },
       { t: 'idempotency_keys', p: 'SELECT', allowed: true },
@@ -170,6 +243,16 @@ describe('migrations (integration)', () => {
       { t: 'integration_outbox', p: 'SELECT', allowed: true },
       { t: 'integration_outbox', p: 'TRUNCATE', allowed: false },
       { t: 'integration_outbox', p: 'UPDATE', allowed: true },
+      { t: 'loader_type_groups', p: 'DELETE', allowed: false },
+      { t: 'loader_type_groups', p: 'INSERT', allowed: true },
+      { t: 'loader_type_groups', p: 'SELECT', allowed: true },
+      { t: 'loader_type_groups', p: 'TRUNCATE', allowed: false },
+      { t: 'loader_type_groups', p: 'UPDATE', allowed: true },
+      { t: 'loader_types', p: 'DELETE', allowed: false },
+      { t: 'loader_types', p: 'INSERT', allowed: true },
+      { t: 'loader_types', p: 'SELECT', allowed: true },
+      { t: 'loader_types', p: 'TRUNCATE', allowed: false },
+      { t: 'loader_types', p: 'UPDATE', allowed: true },
       { t: 'roles', p: 'DELETE', allowed: false },
       { t: 'roles', p: 'INSERT', allowed: false },
       { t: 'roles', p: 'SELECT', allowed: true },

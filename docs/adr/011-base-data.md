@@ -56,11 +56,23 @@ matrix. Carriers are out (F1-08), as are the web UI (F1-09), announcements (F2) 
   child answers `409 IN_USE` (generic body, no child ids): a hall with live terminals, a group with live
   loader types. The check runs in the same transaction with the parent row locked `FOR UPDATE`, so a
   concurrent child insert (which also locks the parent) cannot create a live child under a row being
-  deleted. **R3 — `ReferenceGuard` stays minimal:** one interface
-  `{ isReferenced(tx, scope, id): Promise<boolean> }`, one in-transaction check for halls and one for
-  groups, one unit test, registered directly in those two services. There is no registry framework and no
-  generic plugin layer; F2/F3 add their own checks by calling the same small interface. Creating a child
-  under an **inactive** parent is allowed; under a **deleted** parent it is the identical 404.
+  deleted.
+  - **AT-11 — binding locking rule (owner-approved at CP2).** The composite foreign key alone does NOT
+    serialise a parent soft delete against a child insert: PostgreSQL takes only a `KEY SHARE` lock on the
+    parent for the FK check, and `KEY SHARE` does not conflict with the `UPDATE` that sets `deleted_at`.
+    Therefore **both** directions must lock explicitly, inside the same transaction:
+    1. a child create **or move** first `SELECT … FOR UPDATE` the live parent row (hall or group) before
+       inserting/updating the child; a missing/deleted parent is the generic 404;
+    2. the parent soft delete first `SELECT … FOR UPDATE` its own row, then checks for live children in the
+       same transaction, and only then sets `deleted_at`.
+       T05/T06 must ship a concurrency test: 50 iterations of parallel (delete-parent vs create-child) on the
+       real container, asserting that no live child ever exists under a deleted parent (the loser either
+       loses the row lock and gets `409 IN_USE`, or its insert commits first and the delete then sees it).
+  - **R3 — `ReferenceGuard` stays minimal:** one interface
+    `{ isReferenced(tx, scope, id): Promise<boolean> }`, one in-transaction check for halls and one for
+    groups, one unit test, registered directly in those two services. There is no registry framework and no
+    generic plugin layer; F2/F3 add their own checks by calling the same small interface. Creating a child
+    under an **inactive** parent is allowed; under a **deleted** parent it is the identical 404.
   - **`isActive = false` has no queue semantics yet.** F1-07 only stores and filters the flag; what an
     inactive destination/hall/loader type means for ordering, allocation or announcements is defined by
     the queue engine in **F3**. Deactivation is the normal operator alternative to deletion and does not
@@ -81,7 +93,10 @@ id)` and `(tenant_id, group_id) → loader_type_groups(tenant_id, id)` make a cr
 - **B8 — Audit.** Every write calls `auditChange({resourceType, resourceId, before, after})` and appends in
   the service transaction via `AuditWriter` (atomic and fail-closed; ADR-009). Actions are
   `<entity>.created|updated|deleted` (`destination.updated`, `terminal.deleted`,
-  `loader_type_group.created`, …). Snapshot allowlists for the five entities contain the business fields,
+  `loader_type_group.created`, …). **The five tables deliberately have no `created_by` column:** the actor
+  is recorded by `audit_logs` (each write calls `auditChange` in the same transaction), so a per-row FK
+  would duplicate the audit trail and add a write-ordering dependency. Reads that need the author join
+  `audit_logs` by `resource_type`/`resource_id`. Snapshot allowlists for the five entities contain the business fields,
   `version` and `deletedAt`; `name_key` is not needed and no PII exists. `metadata` carries only structural
   keys `{hallId}` / `{groupId}` — this is the first consumer, so the known "metadata has no allowlist"
   debt (F1-06 T09 L1) is avoided by contract. These permissions are non-sensitive, so no `reason` is
@@ -92,8 +107,11 @@ id)` and `(tenant_id, group_id) → loader_type_groups(tenant_id, id)` make a cr
   `0018` (custom) applies the RLS template to all five, revokes `DELETE`/`TRUNCATE` from `bitabar_app`
   (soft delete only), and fails closed with `BASE_RLS_INVALID` / `BASE_POLICY_INVALID` /
   `BASE_GRANTS_INVALID` if the flags, policies or privilege set did not stick. CHECKs: name length,
-  `display_order BETWEEN 0 AND 9999`, `version >= 1`, `name_key <> ''`. **No new function and no new
-  trigger — the `SECURITY DEFINER` catalog stays at exactly 6.**
+  `display_order BETWEEN 0 AND 9999`, `version >= 1`, `name_key <> ''`. **The upper bound of the
+  `name_length` CHECK is unreachable in practice:** `name varchar(64)` rejects a 65-character value
+  first with `22001`, so the CHECK's `<= 64` is a redundant backstop behind the column type (the test
+  pins 22001; the API's 2–64 gate is the primary control). **No new function and no new trigger — the
+  `SECURITY DEFINER` catalog stays at exactly 6.**
 - **B11 — Boundaries.** Code lives in `src/modules/base-data/{destinations,halls,loader-types}/`
   (controller/service/repository/schemas); shared helpers in `src/common/pagination/` and
   `src/common/text/name-key.ts`. Each new controller is added to `PRODUCTION_CONTROLLERS` and to the
