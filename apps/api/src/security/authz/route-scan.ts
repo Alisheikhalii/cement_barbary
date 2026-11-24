@@ -46,6 +46,7 @@ export const SELF_SERVICE_ROUTE_ALLOWLIST = Object.freeze([
 export const PRODUCTION_CONTROLLERS = Object.freeze([
   'HealthController',
   'AuthController',
+  'DestinationsController',
 ] as const);
 
 /**

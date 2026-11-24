@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { MetadataScanner } from '@nestjs/core';
 
 import { AuthController } from '../../src/modules/auth/auth.controller.js';
+import { DestinationsController } from '../../src/modules/base-data/destinations/destinations.controller.js';
 import { HealthController } from '../../src/modules/health/health.controller.js';
 import { renderMatrix, replaceMatrixBlock } from '../../src/security/authz/matrix.js';
 import {
@@ -30,6 +31,11 @@ const DOCUMENT = fileURLToPath(
 const PRODUCTION_CLASSES: readonly ControllerRouteSource[] = [
   { metatype: HealthController, instance: null, moduleName: 'HealthModule' },
   { metatype: AuthController, instance: null, moduleName: 'AuthModule' },
+  {
+    metatype: DestinationsController,
+    instance: null,
+    moduleName: 'DestinationsModule',
+  },
 ];
 
 function productionRoutes() {

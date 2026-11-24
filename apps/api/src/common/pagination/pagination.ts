@@ -14,8 +14,16 @@ import { z } from 'zod';
  */
 export const PAGE_SIZE_MAX = 100;
 
+/**
+ * Upper bound for `page` keeps `(page - 1) * pageSize` a safe integer, so the
+ * OFFSET sent to PostgreSQL can never overflow or arrive in exponent notation
+ * (which the server rejects as an invalid bigint). A page this large is empty
+ * anyway; beyond it the request is a clean 400, never a 500.
+ */
+export const PAGE_MAX = 1_000_000_000;
+
 export const paginationQuerySchema = z.strictObject({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(PAGE_MAX).default(1),
   pageSize: z.coerce.number().int().min(1).max(PAGE_SIZE_MAX).default(DEFAULT_PAGE_SIZE),
 });
 

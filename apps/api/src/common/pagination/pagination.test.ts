@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import {
+  PAGE_MAX,
   PAGE_SIZE_MAX,
   paginationMeta,
   paginationOffset,
@@ -28,6 +29,7 @@ describe('paginationQuerySchema', () => {
     ['negative page', { page: '-1' }],
     ['fractional page', { page: '1.5' }],
     ['non-numeric page', { page: 'abc' }],
+    ['page beyond the safe OFFSET bound', { page: String(PAGE_MAX + 1) }],
     ['pageSize 0', { pageSize: '0' }],
     ['pageSize 101', { pageSize: String(PAGE_SIZE_MAX + 1) }],
     ['fractional pageSize', { pageSize: '10.5' }],

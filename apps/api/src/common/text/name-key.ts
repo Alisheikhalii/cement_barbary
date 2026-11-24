@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isStorableText } from './storable-text.js';
+
 /**
  * B4 name normalization for the operator-managed base data (destinations,
  * halls, terminals, loader-type groups and loader types).
@@ -58,6 +60,9 @@ export const nameInputSchema = z
   .string()
   .min(NAME_MIN_LENGTH)
   .max(NAME_MAX_LENGTH)
+  .refine(isStorableText, {
+    message: 'name contains characters that cannot be stored',
+  })
   .refine((value) => normalizeNameKey(value) !== '', {
     message: 'name must contain at least one visible character',
   });

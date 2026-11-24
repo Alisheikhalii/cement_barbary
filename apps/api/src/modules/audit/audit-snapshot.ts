@@ -27,6 +27,19 @@ const SNAPSHOTS: Readonly<Record<string, readonly string[]>> = Object.freeze({
     'deletedAt',
   ]),
   user_role: Object.freeze(['userId', 'roleCode']),
+  // F1-07 base data (ADR-011 B8): business fields + version + deletedAt.
+  // `nameKey` and `tenantId` are intentionally absent.
+  destination: Object.freeze([
+    'id',
+    'name',
+    'provinceName',
+    'isActive',
+    'displayOrder',
+    'version',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ]),
 });
 
 const MAX_VALUE_LENGTH = 2_000;

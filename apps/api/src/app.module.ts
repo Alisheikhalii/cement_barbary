@@ -10,6 +10,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './db/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { BaseDataModule } from './modules/base-data/base-data.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OutboxModule } from './modules/outbox/outbox.module.js';
 import { UsersModule } from './modules/users/users.module.js';
@@ -58,6 +59,10 @@ import { AuthzModule } from './security/authz/authz.module.js';
     // Producer for every external side effect; the poller/mock are flag-gated
     // and refused in production.
     OutboxModule,
+    // F1-07 base data: first real business endpoints (guarded, audited). Kept
+    // after the security modules so the discovery order matches the matrix
+    // script's controller list (Health → Auth → Destinations).
+    BaseDataModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

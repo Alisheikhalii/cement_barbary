@@ -32,15 +32,20 @@ additionally require a `reason` and fresh intersected roles (ADR-008 Z6/Z10).
 
 ### Routes
 
-| Method | Path                           | Marker         | Permission |
-| ------ | ------------------------------ | -------------- | ---------- |
-| GET    | `/health/live`                 | `@Public`      | —          |
-| GET    | `/health/ready`                | `@Public`      | —          |
-| POST   | `/api/v1/auth/login`           | `@Public`      | —          |
-| POST   | `/api/v1/auth/refresh`         | `@Public`      | —          |
-| POST   | `/api/v1/auth/logout`          | `@Public`      | —          |
-| POST   | `/api/v1/auth/password/change` | `@Public`      | —          |
-| GET    | `/api/v1/auth/me`              | `@SelfService` | —          |
+| Method | Path                            | Marker               | Permission          |
+| ------ | ------------------------------- | -------------------- | ------------------- |
+| GET    | `/health/live`                  | `@Public`            | —                   |
+| GET    | `/health/ready`                 | `@Public`            | —                   |
+| POST   | `/api/v1/auth/login`            | `@Public`            | —                   |
+| POST   | `/api/v1/auth/refresh`          | `@Public`            | —                   |
+| POST   | `/api/v1/auth/logout`           | `@Public`            | —                   |
+| POST   | `/api/v1/auth/password/change`  | `@Public`            | —                   |
+| GET    | `/api/v1/auth/me`               | `@SelfService`       | —                   |
+| GET    | `/api/v1/base/destinations`     | `@RequirePermission` | `destination.read`  |
+| GET    | `/api/v1/base/destinations/:id` | `@RequirePermission` | `destination.read`  |
+| POST   | `/api/v1/base/destinations`     | `@RequirePermission` | `destination.write` |
+| PATCH  | `/api/v1/base/destinations/:id` | `@RequirePermission` | `destination.write` |
+| DELETE | `/api/v1/base/destinations/:id` | `@RequirePermission` | `destination.write` |
 
 <!-- matrix:end -->
 

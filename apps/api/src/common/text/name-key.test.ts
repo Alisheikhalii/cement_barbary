@@ -59,6 +59,8 @@ describe('nameInputSchema', () => {
     ['too long', 'x'.repeat(NAME_MAX_LENGTH + 1)],
     ['whitespace only', '   '],
     ['ZWNJ only', '‌‌'],
+    ['NUL', 'ab\u0000cd'],
+    ['unpaired high surrogate', 'ab\uD800cd'],
   ])('rejects %s', (_label, value) => {
     expect(nameInputSchema.safeParse(value).success).toBe(false);
   });
