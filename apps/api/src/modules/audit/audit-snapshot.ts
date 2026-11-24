@@ -61,6 +61,28 @@ const SNAPSHOTS: Readonly<Record<string, readonly string[]>> = Object.freeze({
     'updatedAt',
     'deletedAt',
   ]),
+  loader_type_group: Object.freeze([
+    'id',
+    'name',
+    'isActive',
+    'displayOrder',
+    'version',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ]),
+  // `groupId` is structural and travels in `metadata` (with `previousGroupId`
+  // on a move), not here.
+  loader_type: Object.freeze([
+    'id',
+    'name',
+    'isActive',
+    'displayOrder',
+    'version',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ]),
 });
 
 const MAX_VALUE_LENGTH = 2_000;

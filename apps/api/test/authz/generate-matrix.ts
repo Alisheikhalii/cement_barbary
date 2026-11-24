@@ -8,6 +8,8 @@ import { MetadataScanner } from '@nestjs/core';
 import { AuthController } from '../../src/modules/auth/auth.controller.js';
 import { DestinationsController } from '../../src/modules/base-data/destinations/destinations.controller.js';
 import { HallsController } from '../../src/modules/base-data/halls/halls.controller.js';
+import { LoaderTypeGroupsController } from '../../src/modules/base-data/loader-types/loader-type-groups.controller.js';
+import { LoaderTypesController } from '../../src/modules/base-data/loader-types/loader-types.controller.js';
 import { HealthController } from '../../src/modules/health/health.controller.js';
 import { renderMatrix, replaceMatrixBlock } from '../../src/security/authz/matrix.js';
 import {
@@ -38,6 +40,12 @@ const PRODUCTION_CLASSES: readonly ControllerRouteSource[] = [
     moduleName: 'DestinationsModule',
   },
   { metatype: HallsController, instance: null, moduleName: 'HallsModule' },
+  {
+    metatype: LoaderTypeGroupsController,
+    instance: null,
+    moduleName: 'LoaderTypesModule',
+  },
+  { metatype: LoaderTypesController, instance: null, moduleName: 'LoaderTypesModule' },
 ];
 
 function productionRoutes() {

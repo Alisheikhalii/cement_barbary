@@ -48,6 +48,8 @@ export const PRODUCTION_CONTROLLERS = Object.freeze([
   'AuthController',
   'DestinationsController',
   'HallsController',
+  'LoaderTypeGroupsController',
+  'LoaderTypesController',
 ] as const);
 
 /**

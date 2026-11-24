@@ -191,6 +191,8 @@ describe('route surface', { timeout: 30000 }, () => {
       'DELETE /api/v1/base/destinations/:id',
       'DELETE /api/v1/base/halls/:hallId/terminals/:id',
       'DELETE /api/v1/base/halls/:id',
+      'DELETE /api/v1/base/loader-type-groups/:id',
+      'DELETE /api/v1/base/loader-types/:id',
       'GET /api/v1/auth/me',
       'GET /api/v1/base/destinations',
       'GET /api/v1/base/destinations/:id',
@@ -198,11 +200,17 @@ describe('route surface', { timeout: 30000 }, () => {
       'GET /api/v1/base/halls/:hallId/terminals',
       'GET /api/v1/base/halls/:hallId/terminals/:id',
       'GET /api/v1/base/halls/:id',
+      'GET /api/v1/base/loader-type-groups',
+      'GET /api/v1/base/loader-type-groups/:id',
+      'GET /api/v1/base/loader-types',
+      'GET /api/v1/base/loader-types/:id',
       'GET /health/live',
       'GET /health/ready',
       'PATCH /api/v1/base/destinations/:id',
       'PATCH /api/v1/base/halls/:hallId/terminals/:id',
       'PATCH /api/v1/base/halls/:id',
+      'PATCH /api/v1/base/loader-type-groups/:id',
+      'PATCH /api/v1/base/loader-types/:id',
       'POST /api/v1/auth/login',
       'POST /api/v1/auth/logout',
       'POST /api/v1/auth/password/change',
@@ -210,6 +218,8 @@ describe('route surface', { timeout: 30000 }, () => {
       'POST /api/v1/base/destinations',
       'POST /api/v1/base/halls',
       'POST /api/v1/base/halls/:hallId/terminals',
+      'POST /api/v1/base/loader-type-groups',
+      'POST /api/v1/base/loader-types',
     ]);
     for (const route of routes) {
       if (route.path === '/api/v1/auth/me') {
@@ -222,7 +232,9 @@ describe('route surface', { timeout: 30000 }, () => {
         expect(route.isSelfService, route.path).toBe(false);
         const resource = route.path.startsWith('/api/v1/base/destinations')
           ? 'destination'
-          : 'hall';
+          : route.path.startsWith('/api/v1/base/halls')
+            ? 'hall'
+            : 'loader_type';
         expect(route.permission, route.path).toBe(
           `${resource}.${route.method === 'GET' ? 'read' : 'write'}`,
         );

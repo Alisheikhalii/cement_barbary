@@ -61,7 +61,8 @@ import { AuthzModule } from './security/authz/authz.module.js';
     OutboxModule,
     // F1-07 base data: first real business endpoints (guarded, audited). Kept
     // after the security modules so the discovery order matches the matrix
-    // script's controller list (Health → Auth → Destinations → Halls).
+    // script's controller list (Health → Auth → Destinations → Halls →
+    // LoaderTypeGroups → LoaderTypes).
     BaseDataModule,
   ],
   providers: [

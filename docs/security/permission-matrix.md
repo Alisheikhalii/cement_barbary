@@ -56,6 +56,16 @@ additionally require a `reason` and fresh intersected roles (ADR-008 Z6/Z10).
 | GET    | `/api/v1/base/halls/:hallId/terminals/:id` | `@RequirePermission` | `hall.read`         |
 | PATCH  | `/api/v1/base/halls/:hallId/terminals/:id` | `@RequirePermission` | `hall.write`        |
 | DELETE | `/api/v1/base/halls/:hallId/terminals/:id` | `@RequirePermission` | `hall.write`        |
+| GET    | `/api/v1/base/loader-type-groups`          | `@RequirePermission` | `loader_type.read`  |
+| POST   | `/api/v1/base/loader-type-groups`          | `@RequirePermission` | `loader_type.write` |
+| GET    | `/api/v1/base/loader-type-groups/:id`      | `@RequirePermission` | `loader_type.read`  |
+| PATCH  | `/api/v1/base/loader-type-groups/:id`      | `@RequirePermission` | `loader_type.write` |
+| DELETE | `/api/v1/base/loader-type-groups/:id`      | `@RequirePermission` | `loader_type.write` |
+| GET    | `/api/v1/base/loader-types`                | `@RequirePermission` | `loader_type.read`  |
+| POST   | `/api/v1/base/loader-types`                | `@RequirePermission` | `loader_type.write` |
+| GET    | `/api/v1/base/loader-types/:id`            | `@RequirePermission` | `loader_type.read`  |
+| PATCH  | `/api/v1/base/loader-types/:id`            | `@RequirePermission` | `loader_type.write` |
+| DELETE | `/api/v1/base/loader-types/:id`            | `@RequirePermission` | `loader_type.write` |
 
 <!-- matrix:end -->
 
@@ -63,8 +73,8 @@ additionally require a `reason` and fresh intersected roles (ADR-008 Z6/Z10).
 condition C1), present in development/test. They are not part of the generated block.
 
 **Catalog status:** all ten permissions are in code now (T02). F1-05 had no production route;
-F1-07 consumes `destination.*` and `hall.*` today, and F1-08 will consume `carrier.*`.
-`CARRIER_ADMIN` and `DRIVER` hold no data permission; every authenticated role has
+F1-07 consumes `destination.*`, `hall.*` and `loader_type.*` today, and F1-08 will consume
+`carrier.*`. `CARRIER_ADMIN` and `DRIVER` hold no data permission; every authenticated role has
 `@SelfService` access to its own identity. The route classification above is locked by the
 route-scan test.
 
