@@ -68,3 +68,17 @@ export const nameInputSchema = z
   });
 
 export type NameInput = z.infer<typeof nameInputSchema>;
+
+/**
+ * The shared `q` search contract (B3/T04): raw length 1–64, storable text, and
+ * at least one visible character after normalization. The caller normalizes
+ * and LIKE-escapes before querying `name_key`.
+ */
+export const nameSearchSchema = z
+  .string()
+  .min(1)
+  .max(NAME_MAX_LENGTH)
+  .refine(isStorableText, { message: 'q contains unstorable characters' })
+  .refine((value) => normalizeNameKey(value) !== '', {
+    message: 'q must contain at least one visible character',
+  });

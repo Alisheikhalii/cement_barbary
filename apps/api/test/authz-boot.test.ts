@@ -189,29 +189,42 @@ describe('route surface', { timeout: 30000 }, () => {
     const routes = app.get(AuthzRouteDiscovery).collect();
     expect(routes.map((route) => `${route.method} ${route.path}`).sort()).toEqual([
       'DELETE /api/v1/base/destinations/:id',
+      'DELETE /api/v1/base/halls/:hallId/terminals/:id',
+      'DELETE /api/v1/base/halls/:id',
       'GET /api/v1/auth/me',
       'GET /api/v1/base/destinations',
       'GET /api/v1/base/destinations/:id',
+      'GET /api/v1/base/halls',
+      'GET /api/v1/base/halls/:hallId/terminals',
+      'GET /api/v1/base/halls/:hallId/terminals/:id',
+      'GET /api/v1/base/halls/:id',
       'GET /health/live',
       'GET /health/ready',
       'PATCH /api/v1/base/destinations/:id',
+      'PATCH /api/v1/base/halls/:hallId/terminals/:id',
+      'PATCH /api/v1/base/halls/:id',
       'POST /api/v1/auth/login',
       'POST /api/v1/auth/logout',
       'POST /api/v1/auth/password/change',
       'POST /api/v1/auth/refresh',
       'POST /api/v1/base/destinations',
+      'POST /api/v1/base/halls',
+      'POST /api/v1/base/halls/:hallId/terminals',
     ]);
     for (const route of routes) {
       if (route.path === '/api/v1/auth/me') {
         expect(route.isSelfService, route.path).toBe(true);
         expect(route.isPublic, route.path).toBe(false);
         expect(route.isPermission, route.path).toBe(false);
-      } else if (route.path.startsWith('/api/v1/base/destinations')) {
+      } else if (route.path.startsWith('/api/v1/base/')) {
         expect(route.isPermission, route.path).toBe(true);
         expect(route.isPublic, route.path).toBe(false);
         expect(route.isSelfService, route.path).toBe(false);
+        const resource = route.path.startsWith('/api/v1/base/destinations')
+          ? 'destination'
+          : 'hall';
         expect(route.permission, route.path).toBe(
-          route.method === 'GET' ? 'destination.read' : 'destination.write',
+          `${resource}.${route.method === 'GET' ? 'read' : 'write'}`,
         );
       } else {
         expect(route.isPublic, route.path).toBe(true);

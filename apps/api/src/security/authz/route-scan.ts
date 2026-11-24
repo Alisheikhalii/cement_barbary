@@ -47,6 +47,7 @@ export const PRODUCTION_CONTROLLERS = Object.freeze([
   'HealthController',
   'AuthController',
   'DestinationsController',
+  'HallsController',
 ] as const);
 
 /**

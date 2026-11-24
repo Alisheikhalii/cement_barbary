@@ -7,6 +7,7 @@ import { MetadataScanner } from '@nestjs/core';
 
 import { AuthController } from '../../src/modules/auth/auth.controller.js';
 import { DestinationsController } from '../../src/modules/base-data/destinations/destinations.controller.js';
+import { HallsController } from '../../src/modules/base-data/halls/halls.controller.js';
 import { HealthController } from '../../src/modules/health/health.controller.js';
 import { renderMatrix, replaceMatrixBlock } from '../../src/security/authz/matrix.js';
 import {
@@ -36,6 +37,7 @@ const PRODUCTION_CLASSES: readonly ControllerRouteSource[] = [
     instance: null,
     moduleName: 'DestinationsModule',
   },
+  { metatype: HallsController, instance: null, moduleName: 'HallsModule' },
 ];
 
 function productionRoutes() {

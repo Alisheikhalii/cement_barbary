@@ -2,9 +2,11 @@ import { z } from 'zod';
 
 import { paginationQuerySchema } from '../../../common/pagination/pagination.js';
 import { sortQuerySchema, type SortOptions } from '../../../common/pagination/sort.js';
-import { nameInputSchema, normalizeNameKey } from '../../../common/text/name-key.js';
+import { nameInputSchema, nameSearchSchema } from '../../../common/text/name-key.js';
 import { isStorableText } from '../../../common/text/storable-text.js';
 import { expectedVersionSchema } from '../../../common/validation/expected-version.js';
+
+export { emptyQuerySchema } from '../../../common/validation/empty-query.js';
 import type { DestinationDto } from './destinations.types.js';
 
 /**
@@ -35,31 +37,18 @@ const provinceNameSchema = z
   .max(64)
   .refine(isStorableText, { message: 'provinceName contains unstorable characters' });
 
-/** `q` is normalized before the LIKE; a name that normalizes to '' cannot match anything. */
-const searchSchema = z
-  .string()
-  .min(1)
-  .max(64)
-  .refine(isStorableText, { message: 'q contains unstorable characters' })
-  .refine((value) => normalizeNameKey(value) !== '', {
-    message: 'q must contain at least one visible character',
-  });
-
 export const destinationListQuerySchema = paginationQuerySchema.extend({
   isActive: z
     .enum(['true', 'false'])
     .transform((value) => value === 'true')
     .optional(),
-  q: searchSchema.optional(),
+  q: nameSearchSchema.optional(),
   sort: sortQuerySchema(destinationSortOptions),
 });
 
 export type DestinationListQuery = z.infer<typeof destinationListQuerySchema>;
 
 export const destinationIdParamsSchema = z.strictObject({ id: z.uuid() });
-
-/** Routes that take no query string: an unknown key is a 400, not silently ignored. */
-export const emptyQuerySchema = z.strictObject({});
 
 export const createDestinationSchema = z.strictObject({
   name: nameInputSchema,

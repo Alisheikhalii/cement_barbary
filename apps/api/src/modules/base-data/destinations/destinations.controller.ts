@@ -10,7 +10,8 @@ import {
   ZodQuery,
 } from '../../../security/authz/decorators.js';
 import { readAuthzContext } from '../../../security/authz/access-scope.js';
-import { DestinationsService, type DestinationWriteActor } from './destinations.service.js';
+import { writeActor } from '../base-data.actor.js';
+import { DestinationsService } from './destinations.service.js';
 import {
   createDestinationSchema,
   deleteDestinationQuerySchema,
@@ -69,7 +70,7 @@ export class DestinationsController {
     @ZodQuery(emptyQuerySchema) _query: Record<string, never>,
     @Req() request: Request,
   ): Promise<DestinationDto> {
-    return this.destinations.create(readAuthzContext(request).scope, body, this.actor(request));
+    return this.destinations.create(readAuthzContext(request).scope, body, writeActor(request));
   }
 
   @RequirePermission('destination.write')
@@ -86,7 +87,7 @@ export class DestinationsController {
       readAuthzContext(request).scope,
       params.id,
       body,
-      this.actor(request),
+      writeActor(request),
     );
   }
 
@@ -104,19 +105,7 @@ export class DestinationsController {
       readAuthzContext(request).scope,
       params.id,
       query,
-      this.actor(request),
+      writeActor(request),
     );
-  }
-
-  /** Audit actor from the verified principal + request metadata. */
-  private actor(request: Request): DestinationWriteActor {
-    const { principal } = readAuthzContext(request);
-    const id = (request as Request & { id?: unknown }).id;
-    return {
-      userId: principal.userId,
-      sessionId: principal.sessionId,
-      ip: typeof request.ip === 'string' && request.ip.length > 0 ? request.ip : null,
-      requestId: typeof id === 'string' && id.length > 0 ? id : null,
-    };
   }
 }

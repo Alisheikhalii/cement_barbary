@@ -32,30 +32,41 @@ additionally require a `reason` and fresh intersected roles (ADR-008 Z6/Z10).
 
 ### Routes
 
-| Method | Path                            | Marker               | Permission          |
-| ------ | ------------------------------- | -------------------- | ------------------- |
-| GET    | `/health/live`                  | `@Public`            | —                   |
-| GET    | `/health/ready`                 | `@Public`            | —                   |
-| POST   | `/api/v1/auth/login`            | `@Public`            | —                   |
-| POST   | `/api/v1/auth/refresh`          | `@Public`            | —                   |
-| POST   | `/api/v1/auth/logout`           | `@Public`            | —                   |
-| POST   | `/api/v1/auth/password/change`  | `@Public`            | —                   |
-| GET    | `/api/v1/auth/me`               | `@SelfService`       | —                   |
-| GET    | `/api/v1/base/destinations`     | `@RequirePermission` | `destination.read`  |
-| GET    | `/api/v1/base/destinations/:id` | `@RequirePermission` | `destination.read`  |
-| POST   | `/api/v1/base/destinations`     | `@RequirePermission` | `destination.write` |
-| PATCH  | `/api/v1/base/destinations/:id` | `@RequirePermission` | `destination.write` |
-| DELETE | `/api/v1/base/destinations/:id` | `@RequirePermission` | `destination.write` |
+| Method | Path                                       | Marker               | Permission          |
+| ------ | ------------------------------------------ | -------------------- | ------------------- |
+| GET    | `/health/live`                             | `@Public`            | —                   |
+| GET    | `/health/ready`                            | `@Public`            | —                   |
+| POST   | `/api/v1/auth/login`                       | `@Public`            | —                   |
+| POST   | `/api/v1/auth/refresh`                     | `@Public`            | —                   |
+| POST   | `/api/v1/auth/logout`                      | `@Public`            | —                   |
+| POST   | `/api/v1/auth/password/change`             | `@Public`            | —                   |
+| GET    | `/api/v1/auth/me`                          | `@SelfService`       | —                   |
+| GET    | `/api/v1/base/destinations`                | `@RequirePermission` | `destination.read`  |
+| GET    | `/api/v1/base/destinations/:id`            | `@RequirePermission` | `destination.read`  |
+| POST   | `/api/v1/base/destinations`                | `@RequirePermission` | `destination.write` |
+| PATCH  | `/api/v1/base/destinations/:id`            | `@RequirePermission` | `destination.write` |
+| DELETE | `/api/v1/base/destinations/:id`            | `@RequirePermission` | `destination.write` |
+| GET    | `/api/v1/base/halls`                       | `@RequirePermission` | `hall.read`         |
+| POST   | `/api/v1/base/halls`                       | `@RequirePermission` | `hall.write`        |
+| GET    | `/api/v1/base/halls/:id`                   | `@RequirePermission` | `hall.read`         |
+| PATCH  | `/api/v1/base/halls/:id`                   | `@RequirePermission` | `hall.write`        |
+| DELETE | `/api/v1/base/halls/:id`                   | `@RequirePermission` | `hall.write`        |
+| GET    | `/api/v1/base/halls/:hallId/terminals`     | `@RequirePermission` | `hall.read`         |
+| POST   | `/api/v1/base/halls/:hallId/terminals`     | `@RequirePermission` | `hall.write`        |
+| GET    | `/api/v1/base/halls/:hallId/terminals/:id` | `@RequirePermission` | `hall.read`         |
+| PATCH  | `/api/v1/base/halls/:hallId/terminals/:id` | `@RequirePermission` | `hall.write`        |
+| DELETE | `/api/v1/base/halls/:hallId/terminals/:id` | `@RequirePermission` | `hall.write`        |
 
 <!-- matrix:end -->
 
 `/api/docs` and `/api/docs-json` are Swagger routes outside Nest: **absent in production** (owner
 condition C1), present in development/test. They are not part of the generated block.
 
-**Catalog status:** all ten permissions are in code now (T02). No production route uses them in
-F1-05; the F1-07/F1-08 endpoint tasks consume them. `CARRIER_ADMIN` and `DRIVER` hold no data
-permission; every authenticated role has `@SelfService` access to its own identity. The route
-classification above is locked by the route-scan test.
+**Catalog status:** all ten permissions are in code now (T02). F1-05 had no production route;
+F1-07 consumes `destination.*` and `hall.*` today, and F1-08 will consume `carrier.*`.
+`CARRIER_ADMIN` and `DRIVER` hold no data permission; every authenticated role has
+`@SelfService` access to its own identity. The route classification above is locked by the
+route-scan test.
 
 ## Planned, not active
 

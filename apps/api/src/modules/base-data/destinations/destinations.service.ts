@@ -6,6 +6,7 @@ import { normalizeNameKey } from '../../../common/text/name-key.js';
 import { TenantContext } from '../../../db/tenant-context.js';
 import { TenantDb } from '../../../db/tenant-db.js';
 import { AccessScope } from '../../../security/authz/access-scope.js';
+import type { BaseDataWriteActor } from '../base-data.actor.js';
 import { AuditWriter } from '../../audit/audit-writer.js';
 import { DestinationsRepository } from './destinations.repository.js';
 import type {
@@ -20,14 +21,6 @@ import {
   toDestinationDto,
   type DestinationDto,
 } from './destinations.types.js';
-
-/** Who performed the write; audit only — never accepted from the client. */
-export interface DestinationWriteActor {
-  readonly userId: string;
-  readonly sessionId: string;
-  readonly ip: string | null;
-  readonly requestId: string | null;
-}
 
 /**
  * Destination use cases (F1-07 T04, ADR-011 B4–B8).
@@ -70,7 +63,7 @@ export class DestinationsService {
   async create(
     scope: AccessScope,
     input: CreateDestinationInput,
-    actor: DestinationWriteActor,
+    actor: BaseDataWriteActor,
   ): Promise<DestinationDto> {
     const nameKey = normalizeNameKey(input.name);
     return this.withTenant(scope, async () => {
@@ -102,7 +95,7 @@ export class DestinationsService {
     scope: AccessScope,
     id: string,
     input: UpdateDestinationInput,
-    actor: DestinationWriteActor,
+    actor: BaseDataWriteActor,
   ): Promise<DestinationDto> {
     const nameKey = input.name === undefined ? undefined : normalizeNameKey(input.name);
     return this.withTenant(scope, async () => {
@@ -156,7 +149,7 @@ export class DestinationsService {
     scope: AccessScope,
     id: string,
     query: DeleteDestinationQuery,
-    actor: DestinationWriteActor,
+    actor: BaseDataWriteActor,
   ): Promise<void> {
     return this.withTenant(scope, async () => {
       const before = await this.repository.findByIdForUpdate(scope, id);

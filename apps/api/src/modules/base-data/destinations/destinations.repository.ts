@@ -7,7 +7,8 @@ import { normalizeNameKey } from '../../../common/text/name-key.js';
 import { destinations } from '../../../db/schema/destinations.js';
 import { and, asc, desc, eq, isNull, sql } from '../../../db/sql.js';
 import { TenantDb } from '../../../db/tenant-db.js';
-import { AccessScope } from '../../../security/authz/access-scope.js';
+import type { AccessScope } from '../../../security/authz/access-scope.js';
+import { runGuarded, scopeTenant } from '../repository-support.js';
 import type { DestinationListQuery } from './destinations.schemas.js';
 import type { DestinationRow } from './destinations.types.js';
 
@@ -49,23 +50,13 @@ const SORT_COLUMNS = {
   createdAt: destinations.createdAt,
 } as const;
 
-function scopeTenant(scope: AccessScope): string {
-  // A forged/look-alike scope must never widen a query, and a carrier/own
-  // scope must never act on tenant-wide base data (defense in depth: the guard
-  // cannot mint one for `destination.*` today).
-  if (!AccessScope.is(scope) || scope.carrierId !== null || scope.driverUserId !== null) {
-    throw DomainError.forbidden();
-  }
-  return scope.tenantId;
-}
-
 @Injectable()
 export class DestinationsRepository {
   constructor(@Inject(TenantDb) private readonly tenantDb: TenantDb) {}
 
   async create(scope: AccessScope, input: CreateDestinationRow): Promise<DestinationRow> {
     const tenantId = scopeTenant(scope);
-    return this.runGuarded(
+    return runGuarded(
       () =>
         this.tenantDb.run(async (tx) => {
           const rows = await tx
@@ -111,7 +102,7 @@ export class DestinationsRepository {
     // Stable pagination: the id tiebreak is server-only, never client-selectable.
     orderBy.push(asc(destinations.id));
 
-    return this.runGuarded(() =>
+    return runGuarded(() =>
       this.tenantDb.run(async (tx) => {
         const rows = await tx
           .select()
@@ -149,7 +140,7 @@ export class DestinationsRepository {
     forUpdate: boolean,
   ): Promise<DestinationRow | null> {
     const tenantId = scopeTenant(scope);
-    const rows = await this.runGuarded(() =>
+    const rows = await runGuarded(() =>
       this.tenantDb.run((tx) => {
         const query = tx
           .select()
@@ -182,7 +173,7 @@ export class DestinationsRepository {
     expectedVersion: number,
   ): Promise<DestinationCasResult> {
     const tenantId = scopeTenant(scope);
-    return this.runGuarded(
+    return runGuarded(
       () =>
         this.tenantDb.run(async (tx) => {
           const rows = await tx
@@ -234,7 +225,7 @@ export class DestinationsRepository {
     expectedVersion: number,
   ): Promise<DestinationCasResult> {
     const tenantId = scopeTenant(scope);
-    return this.runGuarded(() =>
+    return runGuarded(() =>
       this.tenantDb.run(async (tx) => {
         const rows = await tx
           .update(destinations)
@@ -271,48 +262,4 @@ export class DestinationsRepository {
       }),
     );
   }
-
-  /** Translates PG failures; any unmapped error is a generic 500 (never raw SQL). */
-  private async runGuarded<T>(
-    work: () => Promise<T>,
-    translate: Record<string, () => DomainError> = {},
-  ): Promise<T> {
-    try {
-      return await work();
-    } catch (error) {
-      if (error instanceof DomainError) {
-        throw error;
-      }
-      const code = pgCode(error);
-      if (code === undefined) {
-        throw error;
-      }
-      // Unstorable text is bad input, not a server failure (22021 invalid byte
-      // sequence / 22P05 untranslatable character). The schemas already reject
-      // it; this is the DB-level backstop.
-      const mapped = translate[code] ?? DB_BAD_INPUT[code];
-      if (mapped) {
-        throw mapped();
-      }
-      throw DomainError.internal({ pgCode: code });
-    }
-  }
-}
-
-const DB_BAD_INPUT: Readonly<Record<string, () => DomainError>> = Object.freeze({
-  '22021': () => DomainError.badInput(),
-  '22P05': () => DomainError.badInput(),
-});
-
-/** Walks drizzle's "Failed query" wrapper to the original 5-char SQLSTATE. */
-function pgCode(error: unknown): string | undefined {
-  let current: unknown = error;
-  for (let i = 0; i < 5 && current !== null && current !== undefined; i += 1) {
-    const code = (current as { code?: unknown }).code;
-    if (typeof code === 'string' && code.length === 5) {
-      return code;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return undefined;
 }

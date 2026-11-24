@@ -40,6 +40,27 @@ const SNAPSHOTS: Readonly<Record<string, readonly string[]>> = Object.freeze({
     'updatedAt',
     'deletedAt',
   ]),
+  hall: Object.freeze([
+    'id',
+    'name',
+    'isActive',
+    'displayOrder',
+    'version',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ]),
+  // `hallId` is structural and travels in `metadata: { hallId }`, not here.
+  terminal: Object.freeze([
+    'id',
+    'name',
+    'isActive',
+    'displayOrder',
+    'version',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+  ]),
 });
 
 const MAX_VALUE_LENGTH = 2_000;
