@@ -90,15 +90,17 @@ matrix. Carriers are out (F1-08), as are the web UI (F1-09), announcements (F2) 
 id)` and `(tenant_id, group_id) → loader_type_groups(tenant_id, id)` make a cross-tenant parent
   impossible at the database. A body `groupId` that belongs to another tenant, is deleted or does not
   exist answers the same generic 404 — no existence oracle.
-- **B8 — Audit.** Every write calls `auditChange({resourceType, resourceId, before, after})` and appends in
-  the service transaction via `AuditWriter` (atomic and fail-closed; ADR-009). Actions are
-  `<entity>.created|updated|deleted` (`destination.updated`, `terminal.deleted`,
+- **B8 — Audit.** Every write appends directly via
+  `AuditWriter.append({resourceType, resourceId, before, after, ...})` in the service transaction (atomic and
+  fail-closed; ADR-009). These permissions are non-sensitive, so `SensitiveAuditInterceptor` does not run and
+  `auditChange` would throw outside its scope — the direct append is the intended path, not a shortcut. Actions
+  are `<entity>.created|updated|deleted` (`destination.updated`, `terminal.deleted`,
   `loader_type_group.created`, …). **The five tables deliberately have no `created_by` column:** the actor
-  is recorded by `audit_logs` (each write calls `auditChange` in the same transaction), so a per-row FK
+  is recorded by `audit_logs` (each write appends in the same transaction), so a per-row FK
   would duplicate the audit trail and add a write-ordering dependency. Reads that need the author join
-  `audit_logs` by `resource_type`/`resource_id`. Snapshot allowlists for the five entities contain the business fields,
-  `version` and `deletedAt`; `name_key` is not needed and no PII exists. `metadata` carries only structural
-  keys `{hallId}` / `{groupId}` — this is the first consumer, so the known "metadata has no allowlist"
+  `audit_logs` by `resource_type`/`resource_id`. Snapshot allowlists for the five entities contain the row `id`,
+  the business fields, `version` and `deletedAt`; `name_key` is not needed and no PII exists. `metadata` carries only structural
+  keys `{hallId}` / `{groupId}`, plus `{groupId, previousGroupId}` on a move (both structural UUIDs) — this is the first consumer, so the known "metadata has no allowlist"
   debt (F1-06 T09 L1) is avoided by contract. These permissions are non-sensitive, so no `reason` is
   accepted. An idempotent replay writes no second audit row (ADR-010).
 - **B9 — Idempotency.** All 15 mutating routes carry `@Idempotent()`; responses are far below the 64 KiB

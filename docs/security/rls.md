@@ -92,7 +92,9 @@ F1-07 base data (`0017`/`0018`, ADR-011): `destinations`, `halls`,
 Migration `0017` creates them as generated DDL; `0018` applies this template to
 all five, revokes `DELETE`/`TRUNCATE` from `bitabar_app` (soft delete only) and
 fails closed (`BASE_RLS_INVALID` / `BASE_POLICY_INVALID` / `BASE_GRANTS_INVALID`)
-when the RLS flag, the isolation policy or the privilege set did not stick. No
+when the RLS flag, the number of permissive `FOR ALL` policies, or the privilege set is wrong.
+The policy's name, role and expressions are not asserted by `0018` (it runs once); the behavioral
+`base-data-rls.int.test.ts` suite verifies them on every CI run. No
 function and no trigger is added, so the definer catalog stays at 6; `version`
 is incremented by the repository CAS. The parent/child locking rule that makes
 soft delete safe against a concurrent child insert (AT-11) is application code,

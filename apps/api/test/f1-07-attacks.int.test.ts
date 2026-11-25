@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { v7 as uuidv7 } from 'uuid';
@@ -176,21 +176,78 @@ async function liveTypes(groupId: string): Promise<number> {
   return res.rows[0]?.legit ?? 0;
 }
 
-/** Waits (bounded) until a query against `fragment` is blocked on a lock. */
-async function waitForLockWait(fragment: string): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+/**
+ * Waits (bounded) until some backend is blocked by the transaction open on
+ * `blockerPid`. Uses `pg_blocking_pids()`, which any role may call, instead of
+ * `pg_stat_activity.query`, whose text is hidden from non-superusers without
+ * `pg_read_all_stats`. A row-lock waiter waits on the holder's transaction id,
+ * so the blocked side appears as a `transactionid` wait with no relation OID;
+ * `pg_blocking_pids` sees it regardless and needs no SQL-text matching. The
+ * budget is generous: on a busy machine the dispatch itself can take seconds
+ * before the backend even reaches the lock.
+ */
+async function waitForLockWait(blockerPid: number, budgetMs = 15_000): Promise<void> {
+  const deadline = Date.now() + budgetMs;
+  for (;;) {
     const res = await owner.query<{ n: number }>(
       `SELECT count(*)::int AS n
-         FROM pg_stat_activity
-        WHERE wait_event_type = 'Lock' AND state = 'active' AND query ILIKE $1`,
-      [`%${fragment}%`],
+         FROM pg_stat_activity a
+        WHERE a.pid <> $1
+          AND $1 = ANY (pg_blocking_pids(a.pid))
+          AND a.wait_event_type = 'Lock'`,
+      [blockerPid],
     );
     if ((res.rows[0]?.n ?? 0) > 0) {
       return;
     }
+    if (Date.now() > deadline) {
+      throw new Error(`no backend blocked by backend ${blockerPid} within ${budgetMs}ms`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error(`no query blocked on ${fragment}`);
+}
+
+/** The backend id of the connection holding an open transaction's row lock. */
+async function lockHolderPid(client: PoolClient): Promise<number> {
+  const pidRow = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+  const pid = pidRow.rows[0]?.pid;
+  if (pid === undefined) {
+    throw new Error('no backend pid for the lock holder');
+  }
+  return pid;
+}
+
+type SettledResponse =
+  | { readonly ok: true; readonly res: request.Response }
+  | { readonly ok: false; readonly error: unknown };
+
+/**
+ * Dispatches a supertest request now and settles it into a value that never
+ * rejects. Supertest is lazy (dispatch starts on `.then`/`.end`), and when two
+ * requests race, one may be awaited only after an earlier assertion has
+ * thrown; a rejected promise with no handler at that moment would surface as
+ * an unhandled rejection and fail the process. Using `.end` also starts the
+ * request immediately, which is what makes the race genuine.
+ */
+function settle(p: request.Test): Promise<SettledResponse> {
+  return new Promise((resolve) => {
+    p.end((error: Error | null, res: request.Response) => {
+      if (error) {
+        resolve({ ok: false, error });
+      } else {
+        resolve({ ok: true, res });
+      }
+    });
+  });
+}
+
+/** Awaits a settled request, rethrowing transport errors with their origin. */
+async function settledResponse(pending: Promise<SettledResponse>): Promise<request.Response> {
+  const settled = await pending;
+  if (!settled.ok) {
+    throw settled.error;
+  }
+  return settled.res;
 }
 
 function expectNameConflict(res: request.Response, variant: string): void {
@@ -201,7 +258,14 @@ function expectNameConflict(res: request.Response, variant: string): void {
 }
 
 beforeAll(async () => {
-  app = await buildAuthApp();
+  // The deterministic race tests hold a row lock while another request waits
+  // on it; the request transaction's lock_timeout must outlast the test's
+  // detect-and-release window, or a slow CI turns a correct 409/200 into 503.
+  // Both values stay inside the production schema bounds (lock < handler).
+  app = await buildAuthApp({
+    IDEMPOTENCY_LOCK_TIMEOUT_MS: '10000',
+    IDEMPOTENCY_HANDLER_TIMEOUT_MS: '15000',
+  });
   owner = ownerPool();
   const suffix = tag();
   tenantA = await createTenant(owner, `attack-a-${suffix}`);
@@ -750,9 +814,12 @@ describe('F1-07 attacks — mass assignment', () => {
     }
 
     // Encoded dot segments and duplicate slashes must never be a 500 or mutate.
+    // Assert the routing outcome too: a 200 here would mean an unexpected
+    // normalization matched a resource route.
     for (const path of [`${DEST}/%2e%2e`, `${DEST}//${destination.id}`]) {
       const res = await agent().get(path).set(auth(tokenA));
-      expect(res.status, path).not.toBe(500);
+      expect([400, 404], path).toContain(res.status);
+      expect(res.body.data, path).toBeUndefined();
     }
     const still = await agent().get(destPath(destination.id)).set(auth(tokenA)).expect(200);
     expect(still.body.data.version).toBe(1);
@@ -1123,6 +1190,11 @@ describe('F1-07 attacks — LIKE escape and sort allowlist on every list', () =>
       const underscore = await listCase.create(`a_b ${word}`);
       await listCase.create(`axb ${word}`);
       const backslash = await listCase.create(`a\\b ${word}`);
+      // Shadow rows: `\` is LIKE's default escape, so an unescaped query for
+      // `a\b` would match `ab` instead of `a\b`. With the row present the test
+      // proves the backslash is escaped *and* that the wrong row is not
+      // returned, rather than merely pinning PostgreSQL's default behaviour.
+      await listCase.create(`ab ${word}`);
 
       for (const [q, expected] of [
         [`100% ${word}`, percent.id],
@@ -1290,29 +1362,94 @@ describe('F1-07 attacks — concurrency', () => {
     expect(count.rows[0]?.n).toBe(1);
   }, 60_000);
 
+  it('create-type waits on the target group row lock', async () => {
+    const target = await createGroupOk();
+    const client = await owner.connect();
+    let committed = false;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM loader_type_groups WHERE id = $1 FOR UPDATE', [target.id]);
+      const blockerPid = await lockHolderPid(client);
+
+      // If create did not lock the live target group, this request would
+      // answer 201 while the owner still holds the row and the wait below
+      // would time out — so the wait itself is the assertion.
+      const createPromise = settle(
+        createLoaderType({ groupId: target.id, name: `Locked Create ${tag()}` }),
+      );
+      await waitForLockWait(blockerPid);
+
+      await client.query('COMMIT');
+      committed = true;
+      const created = await settledResponse(createPromise);
+      expect(created.status).toBe(201);
+      expect(created.body.data).toMatchObject({ groupId: target.id });
+    } finally {
+      if (!committed) {
+        await client.query('ROLLBACK').catch(() => undefined);
+      }
+      client.release();
+    }
+  }, 60_000);
+
+  it('move-type waits on the target group row lock', async () => {
+    const source = await createGroupOk();
+    const target = await createGroupOk();
+    const type = await createTypeOk(source.id);
+    const client = await owner.connect();
+    let committed = false;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM loader_type_groups WHERE id = $1 FOR UPDATE', [target.id]);
+      const blockerPid = await lockHolderPid(client);
+
+      const movePromise = settle(
+        agent()
+          .patch(typePath(type.id))
+          .set(auth(tokenA))
+          .set('idempotency-key', idemKey())
+          .send({ groupId: target.id, expectedVersion: 1 }),
+      );
+      await waitForLockWait(blockerPid);
+
+      await client.query('COMMIT');
+      committed = true;
+      const moved = await settledResponse(movePromise);
+      expect(moved.status).toBe(200);
+      expect(moved.body.data).toMatchObject({ groupId: target.id, version: 2 });
+    } finally {
+      if (!committed) {
+        await client.query('ROLLBACK').catch(() => undefined);
+      }
+      client.release();
+    }
+  }, 60_000);
+
   it('never leaves a live type in a deleted source group across 50 iterations', async () => {
     for (let i = 0; i < 50; i += 1) {
       const source = await createGroupOk({ name: `Move Source ${i} ${tag()}` });
       const target = await createGroupOk({ name: `Move Target ${i} ${tag()}` });
       const type = await createTypeOk(source.id);
-      const deletePromise = agent()
-        .delete(groupPath(source.id))
-        .set(auth(tokenA))
-        .set('idempotency-key', idemKey())
-        .query({ expectedVersion: '1' })
-        .then((res) => res);
-      const movePromise = agent()
-        .patch(typePath(type.id))
-        .set(auth(tokenA))
-        .set('idempotency-key', idemKey())
-        .send({ groupId: target.id, expectedVersion: 1 })
-        .then((res) => res);
+      const deletePromise = settle(
+        agent()
+          .delete(groupPath(source.id))
+          .set(auth(tokenA))
+          .set('idempotency-key', idemKey())
+          .query({ expectedVersion: '1' }),
+      );
+      const movePromise = settle(
+        agent()
+          .patch(typePath(type.id))
+          .set(auth(tokenA))
+          .set('idempotency-key', idemKey())
+          .send({ groupId: target.id, expectedVersion: 1 }),
+      );
 
       // Observe the source right after the delete resolves: a 204 means the
       // guard saw no live type, so the move must already have committed.
-      const deleted = await deletePromise;
+      const deleted = await settledResponse(deletePromise);
       const liveRightAfterDelete = await liveTypes(source.id);
-      const moved = await movePromise;
+      const moved = await settledResponse(movePromise);
 
       expect([204, 409]).toContain(deleted.status);
       expect(moved.status).toBe(200);
@@ -1346,18 +1483,20 @@ describe('F1-07 attacks — concurrency', () => {
     try {
       await client.query('BEGIN');
       await client.query('SELECT id FROM loader_types WHERE id = $1 FOR UPDATE', [type.id]);
+      const blockerPid = await lockHolderPid(client);
 
       // Dispatch the move first and wait until it is actually blocked on the
       // held type row. The source delete's guard is a plain read, so it must
       // see the still-live type and refuse. A no-op guard would soft-delete
       // the source and answer 204 here.
-      const movePromise = agent()
-        .patch(typePath(type.id))
-        .set(auth(tokenA))
-        .set('idempotency-key', idemKey())
-        .send({ groupId: target.id, expectedVersion: 1 })
-        .then((res) => res);
-      await waitForLockWait('loader_types');
+      const movePromise = settle(
+        agent()
+          .patch(typePath(type.id))
+          .set(auth(tokenA))
+          .set('idempotency-key', idemKey())
+          .send({ groupId: target.id, expectedVersion: 1 }),
+      );
+      await waitForLockWait(blockerPid);
       const deleted = await agent()
         .delete(groupPath(source.id))
         .set(auth(tokenA))
@@ -1368,7 +1507,7 @@ describe('F1-07 attacks — concurrency', () => {
 
       await client.query('COMMIT');
       committed = true;
-      const moved = await movePromise;
+      const moved = await settledResponse(movePromise);
       expect(moved.status).toBe(200);
       expect(moved.body.data).toMatchObject({ groupId: target.id, version: 2 });
     } finally {
@@ -1389,17 +1528,19 @@ describe('F1-07 attacks — concurrency', () => {
     try {
       await client.query('BEGIN');
       await client.query('SELECT id FROM loader_type_groups WHERE id = $1 FOR UPDATE', [source.id]);
+      const blockerPid = await lockHolderPid(client);
 
       // Dispatch the delete first and wait until it is actually blocked on the
       // held source group row. The move does not need that row, so it commits
       // first; once released, the guard sees no live child.
-      const deletePromise = agent()
-        .delete(groupPath(source.id))
-        .set(auth(tokenA))
-        .set('idempotency-key', idemKey())
-        .query({ expectedVersion: '1' })
-        .then((res) => res);
-      await waitForLockWait('loader_type_groups');
+      const deletePromise = settle(
+        agent()
+          .delete(groupPath(source.id))
+          .set(auth(tokenA))
+          .set('idempotency-key', idemKey())
+          .query({ expectedVersion: '1' }),
+      );
+      await waitForLockWait(blockerPid);
       const moved = await agent()
         .patch(typePath(type.id))
         .set(auth(tokenA))
@@ -1410,7 +1551,7 @@ describe('F1-07 attacks — concurrency', () => {
 
       await client.query('COMMIT');
       committed = true;
-      const deleted = await deletePromise;
+      const deleted = await settledResponse(deletePromise);
       expect(deleted.status).toBe(204);
     } finally {
       if (!committed) {

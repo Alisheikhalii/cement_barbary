@@ -16,14 +16,30 @@ const apiRoot = fileURLToPath(new URL('..', import.meta.url));
 // plugin resolution is lazy, so the first lintText call pays the full load
 // cost. Doing it here (with a generous hook timeout) keeps that one-time cost
 // out of individual test timeouts — the cause of this suite's past flakes
-// under parallel worker load (T08, root-caused by investigation subagent).
+// under parallel worker load (F1-03 T08, F1-07 T05).
+//
+// The warm-up is retried once and the hook gets 120s: under real memory/CPU
+// pressure the first attempt can be evicted, and a retry is much cheaper than
+// skipping every assertion in the file (the observed failure mode). A real
+// config error still surfaces on the second attempt.
+const ESLINT_LOAD_TIMEOUT_MS = 120_000;
 let eslint: ESLint;
 
 beforeAll(async () => {
   eslint = new ESLint({ cwd: apiRoot });
-  // Warm-up: force the one-time flat-config/plugin load inside the hook.
-  await eslint.lintText('export {};\n', { filePath: 'src/db/probe.ts' });
-}, 60000);
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      // Warm-up: force the one-time flat-config/plugin load inside the hook.
+      await eslint.lintText('export {};\n', { filePath: 'src/db/probe.ts' });
+      return;
+    } catch (error) {
+      if (attempt >= 1) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+}, ESLINT_LOAD_TIMEOUT_MS);
 
 async function lintRules(code: string, filePath: string): Promise<(string | null)[]> {
   const [result] = await eslint.lintText(code, { filePath });

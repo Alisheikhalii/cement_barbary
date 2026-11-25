@@ -74,3 +74,12 @@ paths = [
   '''apps/api/test/outbox\.int\.test\.ts$''',
   '''apps/api/test/f1-06-attacks\.int\.test\.ts$''',
 ]
+
+# F1-07 T02: 'f1-07-limiter-failure-0001' is a synthetic test idempotency key, not a secret.
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "F1-07 T02 synthetic idempotency key literal (this rule, one file, one commit)"
+condition = "AND"
+commits = ["e2e0b432b5e2f81aedaa8a3a27b33359dc00a932"]
+paths = ['''^apps/api/test/auth-limiter-failure\.int\.test\.ts$''']
